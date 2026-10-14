@@ -402,6 +402,25 @@ class Settings(private val context: Context) {
             prefs.edit().putString("static-p2p-bssid", value).apply()
         }
 
+    /**
+     * Restart WiFi by itself when the WiFi Direct stack wedges, through root or local ADB. Off by
+     * default: it switches WiFi off for every app on the unit, so it is the user's call. See
+     * [com.andrerinas.openheadunit.connection.wifi.direct.P2pStackWedgePolicy].
+     */
+    var autoRestartWifiWhenP2pStuck: Boolean
+        get() = prefs.getBoolean("auto-restart-wifi-p2p-stuck", false)
+        set(value) = prefs.edit().putBoolean("auto-restart-wifi-p2p-stuck", value).apply()
+
+    /**
+     * Whether root was granted when the user switched [autoRestartWifiWhenP2pStuck] on. A fresh
+     * process cannot know this until it opens a shell, and opening one raises the superuser prompt
+     * when there is no saved grant, so a restart only asks for root when this says the user already
+     * answered yes. Otherwise no prompt ever appears unprompted, at launch or on the road.
+     */
+    var wifiRestartRootGranted: Boolean
+        get() = prefs.getBoolean("wifi-restart-root-granted", false)
+        set(value) = prefs.edit().putBoolean("wifi-restart-root-granted", value).apply()
+
     var fakeSpeed: Boolean
         get() = prefs.getBoolean("fake_speed", true)
         set(value) {
@@ -575,7 +594,28 @@ class Settings(private val context: Context) {
             prefs.edit().putInt("wifi-direct-band", migrated).apply()
             return migrated
         }
-        set(value) = prefs.edit().putInt("wifi-direct-band", value).apply()
+        set(value) {
+            // A new choice is a new question: the remembered refusal below answered the old one.
+            prefs.edit()
+                .putInt("wifi-direct-band", value)
+                .remove(KEY_WIFI_DIRECT_BANDED_REFUSED_ON)
+                .apply()
+        }
+
+    /**
+     * The build fingerprint on which this unit refused every banded Native AA group request and
+     * then hosted the no-band group, or null. While it matches the running build, AUTO skips the
+     * banded ladder. See
+     * [com.andrerinas.openheadunit.connection.wifi.direct.NativeGroupBandPolicy.skipsBandedRequest].
+     */
+    var wifiDirectBandedRefusedOn: String?
+        get() = prefs.getString(KEY_WIFI_DIRECT_BANDED_REFUSED_ON, null)
+        set(value) {
+            val editor = prefs.edit()
+            if (value.isNullOrEmpty()) editor.remove(KEY_WIFI_DIRECT_BANDED_REFUSED_ON)
+            else editor.putString(KEY_WIFI_DIRECT_BANDED_REFUSED_ON, value)
+            editor.apply()
+        }
 
     /**
      * Which 5 GHz channel to ask for, on whichever transport is hosting the network.
@@ -1782,6 +1822,7 @@ class Settings(private val context: Context) {
         const val KEY_ASSISTANT_VOLUME_OFFSET = "assistant-volume-offset"
         const val KEY_NAVIGATION_VOLUME_OFFSET = "navigation-volume-offset"
         const val KEY_ENABLE_CAR_LAUNCHER = "enable-car-launcher"
+        const val KEY_WIFI_DIRECT_BANDED_REFUSED_ON = "wifi-direct-banded-refused-on"
 
         const val AUTO_CONNECT_LAST_SESSION = "last-session"
         const val AUTO_CONNECT_SELF_MODE = "self-mode"
@@ -2364,6 +2405,10 @@ class Settings(private val context: Context) {
     var connectionIssueWifiDirectCycledAtEpochMs: Long
         get() = prefs.getLong("connection-issue-p2p-cycled", 0L)
         set(value) = prefs.edit().putLong("connection-issue-p2p-cycled", value).apply()
+
+    var connectionIssueWifiDirectStuckAtEpochMs: Long
+        get() = prefs.getLong("connection-issue-p2p-stuck", 0L)
+        set(value) = prefs.edit().putLong("connection-issue-p2p-stuck", value).apply()
 
     /** This unit's WiFi was off and this Android would not let the app switch it on. */
     var connectionIssueWifiRadioOffAtEpochMs: Long
