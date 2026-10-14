@@ -321,12 +321,22 @@ class AudioMixer(
             var replayAnnounced = false
             mixWorkMaxMs = maxOf(mixWorkMaxMs, writeStartMs - now)
             val result = AudioWriteLoop.writeFully(SHORTS_PER_CYCLE, { running.get() },
-                { offset, remaining ->
-                    if (!device.isParked) outputUnavailableSinceMs = -1L
+                write@{ offset, remaining ->
                     val replay = device.hasPendingRecovery
-                    if (replay && !device.isTerminal && !replayAnnounced && !canRender()) {
+                    // No real PCM is in this block or the recovery prefix. Let the normal idle
+                    // lifecycle finish instead of reopening a dead route just to write silence.
+                    // Later banked/arriving PCM can still use the pending cooldown retry.
+                    if (device.isTerminal && !replay && cycleChannels.none { it.activeThisCycle }) {
+                        // A missing device supplies no backpressure. Pace even keep-active
+                        // mixers, and let arriving PCM wake the owner before the next cycle.
+                        feedSignal.tryAcquire(MIX_INTERVAL_MS, TimeUnit.MILLISECONDS)
+                        return@write remaining
+                    }
+                    if (device.isParked) replayAnnounced = false
+                    val retainedAudio = replay || (device.retryReady && cycleChannels.any { it.activeThisCycle })
+                    if (retainedAudio && !device.isParked && !replayAnnounced && !canRender()) {
                         // A recovered prefix is audio activity even when this cycle is silence.
-                        // Exhausted output remains parked until Start rearms it.
+                        // A cooldown retry must reacquire focus even without another Start.
                         onRecoveryActivity()
                         replayAnnounced = true
                     }
@@ -336,14 +346,15 @@ class AudioMixer(
                             TimeUnit.MILLISECONDS)
                         0
                     }
+                    if (written > 0) outputUnavailableSinceMs = -1L
                     if (written == -6 && device.isTerminal) {
+                        replayAnnounced = false
                         if (device.isParked && outputUnavailableSinceMs < 0)
                             outputUnavailableSinceMs = SystemClock.elapsedRealtime()
-                        // Start may have arrived inside the final failed open. That failure
-                        // cannot mark its already-rearmed successor as permanently unavailable.
-                        if (!device.isParked) outputUnavailableSinceMs = -1L
+                        // Keep outage age across failed retry bursts; otherwise each attempt
+                        // postpones focus release despite making no playback progress.
                         // Retain this mixed block and all channel banks across terminal failure.
-                        // A new Start can rearm the owner without a packet-driven sink replacement.
+                        // Cooldown or a new Start rearms the owner without replacing the sink.
                         feedSignal.tryAcquire(200, TimeUnit.MILLISECONDS)
                         0
                     } else written

@@ -21,7 +21,7 @@ class RecoveringPcmOutputTest {
         assertEquals(prompt.toList(), device.accepted)
     }
 
-    @Test fun `terminal output retains the block until an explicit new Start`() {
+    @Test fun `new Start can bypass output recovery cooldown`() {
         var now = 0L
         var opens = 0
         var working = false
@@ -41,6 +41,60 @@ class RecoveringPcmOutputTest {
         assertEquals(0, output.write(pcm, 0, pcm.size))
         assertEquals(pcm.size, output.write(pcm, 0, pcm.size))
         assertEquals(pcm.toList(), device.accepted)
+    }
+
+    @Test fun `a recovered route resumes the same prompt without another Start`() {
+        var now = 0L
+        var working = false
+        var opens = 0
+        val device = Device()
+        val output = RecoveringPcmOutput(null, {
+            opens++
+            if (!working) error("route unavailable")
+            device
+        }, { now }, {})
+        output.start()
+        val pcm = ShortArray(320) { (it + 1).toShort() }
+        repeat(3) { output.write(pcm, 0, pcm.size); now += 250 }
+        assertTrue(output.isParked)
+        working = true
+        now = 1499
+        assertEquals(-6, output.write(pcm, 0, pcm.size))
+        assertEquals(3, opens)
+        now = 1500
+        assertTrue(output.retryReady)
+        assertEquals(0, output.write(pcm, 0, pcm.size))
+        assertEquals(pcm.size, output.write(pcm, 0, pcm.size))
+        assertEquals(1, device.starts)
+        assertEquals(pcm.toList(), device.accepted)
+    }
+
+    @Test fun `permanently unavailable output backs off instead of reopening each mixer tick`() {
+        var now = 0L
+        var opens = 0
+        val output = RecoveringPcmOutput(null, { opens++; error("no route") }, { now }, {})
+        val pcm = ShortArray(960)
+        for (deadline in listOf(1500L, 4000L, 9500L)) {
+            repeat(3) { output.write(pcm, 0, pcm.size); now += 250 }
+            val before = opens
+            while (now < deadline) {
+                assertEquals(-6, output.write(pcm, 0, pcm.size))
+                now++
+            }
+            assertEquals(before, opens)
+            assertTrue(output.retryReady)
+        }
+        repeat(3) { output.write(pcm, 0, pcm.size); now += 250 }
+        val exhausted = opens
+        now += 1_000_000
+        repeat(100) { assertEquals(-6, output.write(pcm, 0, pcm.size)) }
+        assertEquals(exhausted, opens)
+        assertTrue(output.isParked)
+        output.preparePlayback()
+        repeat(3) { output.write(pcm, 0, pcm.size); now += 250 }
+        assertEquals(exhausted + 3, opens)
+        now += 750
+        assertTrue(output.retryReady) // Start reset the automatic budget to a one-second cooldown.
     }
 
     private class Device(var result: Int = Int.MAX_VALUE) : PcmOutput {

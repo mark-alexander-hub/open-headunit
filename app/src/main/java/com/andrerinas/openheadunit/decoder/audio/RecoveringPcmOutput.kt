@@ -15,7 +15,10 @@ internal class RecoveringPcmOutput(
     private val playbackVersion = java.util.concurrent.atomic.AtomicLong()
     @Volatile private var attemptedVersion = 0L
     private var started = false
-    private var retryAtMs = 0L
+    @Volatile private var retryAtMs = 0L
+    private var cooldowns = 0
+    private var budgetVersion = 0L
+    private var stableSamples = 0L
     @Volatile private var terminal = false
     private var requestedFrames = metadata.minimumBufferFrames
     private var delegateEpoch = initial?.outputEpoch ?: 0L
@@ -27,7 +30,9 @@ internal class RecoveringPcmOutput(
     fun preparePlayback() { playbackVersion.incrementAndGet() }
     val isTerminal get() = terminal
     /** A Start received during the last attempt already authorizes another owner retry. */
-    val isParked get() = terminal && playbackVersion.get() == attemptedVersion
+    val isParked get() = terminal && playbackVersion.get() == attemptedVersion && nowMs() < retryAtMs
+    /** A retained block can retry after cooldown even if the phone sends no further Start. */
+    val retryReady get() = terminal && !isParked
     override val hasPendingRecovery get() = !pending.isEmpty || delegate?.hasPendingRecovery == true
     override val name get() = delegate?.name ?: metadata.name
     override val capacityFrames get() = delegate?.capacityFrames ?: metadata.capacityFrames
@@ -63,8 +68,13 @@ internal class RecoveringPcmOutput(
     }
 
     override fun write(data: ShortArray, offset: Int, count: Int): Int {
+        val version = playbackVersion.get()
+        if (version != budgetVersion) {
+            budgetVersion = version
+            cooldowns = 0
+        }
         if (terminal) {
-            if (playbackVersion.get() == attemptedVersion) return -6
+            if (isParked) return -6
             terminal = false
             watchdog = OutputWriteWatchdog(stableProgressUnits = 48000 * 2)
             retryAtMs = 0
@@ -82,7 +92,10 @@ internal class RecoveringPcmOutput(
         }
         recoveryProgressSamples += transferred + if (prefix) result.coerceAtLeast(0) else 0
         if (result > 0 || transferred > 0) {
-            watchdog.onProgress((result.coerceAtLeast(0).toLong() + transferred).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+            val progress = result.coerceAtLeast(0).toLong() + transferred
+            watchdog.onProgress(progress.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+            stableSamples = (stableSamples + progress).coerceAtMost(48000L * 2)
+            if (stableSamples >= 48000 * 2) cooldowns = 0
             if (result >= 0) return if (prefix) 0 else result
         }
         if (result == -2) return result // caller contract error
@@ -94,17 +107,31 @@ internal class RecoveringPcmOutput(
         when (action) {
             OutputWriteWatchdog.Action.WAIT -> return 0
             OutputWriteWatchdog.Action.STOP -> {
-                report("$name recovery exhausted; retaining PCM until a new Start")
+                parkForRetry()
                 retireForRecovery()
-                terminal = true
                 return -6
             }
             OutputWriteWatchdog.Action.REOPEN -> {
+                stableSamples = 0
                 report("$name $reason; reopening output")
                 retireForRecovery()
                 return reopenOutput()
             }
         }
+    }
+
+    private fun parkForRetry() {
+        // A route may recover without a phone-side Start. Bound each burst of reopen attempts,
+        // then allow three automatic bursts after 1s, 2s and 5s. A permanently broken route
+        // must not repeatedly interrupt the car radio by reacquiring focus forever. Retain
+        // pending PCM after that budget; a new Start or sustained output resets the backoff.
+        stableSamples = 0
+        val delayMs = when (cooldowns) { 0 -> 1000L; 1 -> 2000L; 2 -> 5000L; else -> null }
+        cooldowns = (cooldowns + 1).coerceAtMost(3)
+        retryAtMs = if (delayMs == null) Long.MAX_VALUE else nowMs() + delayMs
+        terminal = true
+        report(if (delayMs == null) "$name automatic recovery exhausted; retaining PCM until Start"
+            else "$name recovery paused; retaining PCM and retrying in ${delayMs}ms")
     }
 
     private fun retireForRecovery() {
@@ -131,7 +158,7 @@ internal class RecoveringPcmOutput(
             try { candidate?.let { pending.prepend(it.closeForRecovery()) } } catch (_: Exception) { }
             report("output reopen failed: ${e.message}")
             if (watchdog.onFailure() == OutputWriteWatchdog.Action.STOP) {
-                terminal = true
+                parkForRetry()
                 return -6
             }
             retryAtMs = nowMs() + 250

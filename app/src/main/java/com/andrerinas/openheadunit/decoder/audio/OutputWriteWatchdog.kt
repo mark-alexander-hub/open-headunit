@@ -1,7 +1,8 @@
 package com.andrerinas.openheadunit.decoder.audio
 
 /** A nonblocking device write must eventually progress even when it reports no error.
- * A fresh output is allowed twice without progress; a broken route must not reopen forever. */
+ * A fresh output is allowed twice without progress in each recovery burst; the owner must
+ * stop or cool down before granting another burst on a broken route. */
 internal class OutputWriteWatchdog(private val stableProgressUnits: Int = 1) {
     enum class Action { WAIT, REOPEN, STOP }
     private var blockedSinceMs = -1L
