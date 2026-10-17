@@ -9,6 +9,7 @@ internal class OutputWriteWatchdog(private val stableProgressUnits: Int = 1) {
     private var recoveryAttempts = 0
     private var progressUnits = 0L
 
+    /** Zero clears only the blocked-write timer when the owner tracks sustained health itself. */
     fun onProgress(units: Int = 1) {
         blockedSinceMs = -1L
         progressUnits = (progressUnits + units).coerceAtMost(stableProgressUnits.toLong())

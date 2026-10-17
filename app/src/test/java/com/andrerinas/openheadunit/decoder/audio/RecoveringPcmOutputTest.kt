@@ -94,7 +94,98 @@ class RecoveringPcmOutputTest {
         repeat(3) { output.write(pcm, 0, pcm.size); now += 250 }
         assertEquals(exhausted + 3, opens)
         now += 750
-        assertTrue(output.retryReady) // Start reset the automatic budget to a one-second cooldown.
+        assertFalse(output.retryReady) // Start permits a burst, not a fresh automatic budget.
+        assertTrue(output.isParked)
+    }
+
+    @Test fun `repeated Starts on a dead route do not renew automatic focus retries`() {
+        var now = 0L
+        var opens = 0
+        val output = RecoveringPcmOutput(null, { opens++; error("no route") }, { now }, {})
+        val pcm = ShortArray(960)
+        var retryEdges = 0
+        repeat(12000) { tick ->
+            // Each prompt still gets its explicit attempt. Count only automatic retry edges.
+            if (tick % 1000 == 0) output.preparePlayback()
+            else if (output.retryReady) retryEdges++
+            output.write(pcm, 0, pcm.size)
+            now += 10
+        }
+        assertEquals(3, retryEdges)
+        assertTrue(output.isParked)
+        // A Start during a retry round may be consumed by that round's next open.
+        assertTrue("explicit Starts must still retry: opens=$opens", opens >= 12 + 3)
+        assertTrue("opens=$opens", opens <= (12 + 3) * 3)
+    }
+
+    @Test fun `one second of successful writes between faults cannot rearm retries`() {
+        var now = 0L
+        val device = Device()
+        var openedAt = 0L
+        var opens = 0
+        val output = RecoveringPcmOutput(device, {
+            opens++
+            openedAt = now
+            device
+        }, { now }, {})
+        val pcm = ShortArray(960)
+        var retryEdges = 0
+        repeat(12000) {
+            device.result = if (now - openedAt < 1010) pcm.size else -6
+            if (output.retryReady) retryEdges++
+            output.write(pcm, 0, pcm.size)
+            now += 10
+        }
+        assertEquals(3, retryEdges)
+        assertTrue(output.isParked)
+        assertEquals(11, opens)
+    }
+
+    @Test fun `sustained playback renews the watchdog between isolated failures`() {
+        var now = 0L
+        var opens = 0
+        val device = Device()
+        val output = RecoveringPcmOutput(device, { opens++; device }, { now }, {})
+        val pcm = ShortArray(960)
+        var retryEdges = 0
+        for (tick in 0..12000) {
+            device.result = if (now > 0 && now % 15_000 == 0L) -6 else pcm.size
+            if (output.retryReady) retryEdges++
+            output.write(pcm, 0, pcm.size)
+            assertFalse("isolated failure parked output at $now ms", output.isTerminal)
+            now += 10
+        }
+        assertEquals(0, retryEdges)
+        assertEquals(8, opens)
+    }
+
+    @Test fun `retry renewal requires ten seconds of both output and elapsed time without gaps`() {
+        for (mode in listOf("healthy", "burst", "gap", "sparse", "pause")) {
+            var now = 0L
+            var working = false
+            val device = Device()
+            val output = RecoveringPcmOutput(null, {
+                if (!working) error("no route")
+                device
+            }, { now }, {})
+            val pcm = ShortArray(960)
+            repeat(3000) { output.write(pcm, 0, pcm.size); now += 10 }
+            assertTrue(output.isParked)
+            working = true
+            output.preparePlayback()
+            output.write(pcm, 0, pcm.size)
+            repeat(1001) { tick ->
+                if (mode == "gap" && tick == 500) now += 1001
+                if (mode == "pause" && tick == 500) { output.pause(); output.start() }
+                output.write(pcm, 0, if (mode == "sparse") 2 else pcm.size)
+                if (mode != "burst") now += 10
+            }
+            device.result = -6
+            working = false
+            repeat(100) { output.write(pcm, 0, pcm.size); now += 10 }
+            now += 1000
+            assertEquals(mode, mode == "healthy", output.retryReady)
+        }
     }
 
     private class Device(var result: Int = Int.MAX_VALUE) : PcmOutput {
