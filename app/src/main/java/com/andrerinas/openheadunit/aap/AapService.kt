@@ -47,6 +47,7 @@ import com.andrerinas.openheadunit.connection.wifi.UserExitHotspotPolicy
 import com.andrerinas.openheadunit.main.MainActivity
 import com.andrerinas.openheadunit.R
 import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.zbt.ZbtDaemonReachability
+import com.andrerinas.openheadunit.utils.ProjectionAirplaneMode
 import com.andrerinas.openheadunit.utils.AppLog
 import com.andrerinas.openheadunit.utils.AppPermissions
 import com.andrerinas.openheadunit.utils.BluetoothAddressSeedPolicy
@@ -1355,6 +1356,7 @@ class AapService : Service() {
         AppLog.i("AapService: Starting GpsLocationService and NightModeManager since connection is established")
         startService(GpsLocationService.intent(this))
         nightModeManager?.start()
+        ProjectionAirplaneMode.onSessionStarted(this)
 
         serviceScope.launch { commManager.startHandshake() }
     }
@@ -1606,6 +1608,7 @@ class AapService : Service() {
         AppLog.i("AapService: Stopping GpsLocationService and NightModeManager since connection is disconnected")
         stopService(GpsLocationService.intent(this))
         nightModeManager?.stop()
+        ProjectionAirplaneMode.onSessionEnded(this)
 
         carKeysManager.onSessionEnded()
 
@@ -2905,6 +2908,7 @@ class AapService : Service() {
         commManager.destroy()
         nightModeManager?.stop()
         stopService(GpsLocationService.intent(this))
+        ProjectionAirplaneMode.onSessionEnded(this)
         try {
             unregisterReceiver(nightModeUpdateReceiver)
             unregisterReceiver(sensorRefreshReceiver)

@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.andrerinas.openheadunit.utils.OemAppManager
+import com.andrerinas.openheadunit.utils.ProjectionAirplaneMode
 import androidx.appcompat.app.AppCompatDelegate
 import android.app.Application
 import android.app.NotificationChannel
@@ -159,6 +160,9 @@ class App : Application(), Application.ActivityLifecycleCallbacks {
                 OemAppManager.runAutoKillIfEnabled(this@App)
             }
         }
+
+        // A session that ended with the process killed left airplane mode on; undo it now.
+        if (settings.airplaneModeSetBySession) ProjectionAirplaneMode.onSessionEnded(this)
     }
 
     private var unlockedInitDone = false

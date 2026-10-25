@@ -86,6 +86,7 @@ import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.NativeCredenti
 import com.andrerinas.openheadunit.utils.BluetoothHelper
 import androidx.lifecycle.lifecycleScope
 import com.andrerinas.openheadunit.utils.WifiStackRecovery
+import com.andrerinas.openheadunit.utils.ProjectionAirplaneMode
 import com.andrerinas.openheadunit.connection.wifi.modes.helper.HelperStrategy
 import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.NativeStrategy
 import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
@@ -197,6 +198,7 @@ class SettingsFragment : Fragment() {
     private var pendingAppLanguage: String? = null
     private var pendingFakeSpeed: Boolean? = null
     private var pendingAutoRestartWifi: Boolean? = null
+    private var pendingAirplaneWhileProjecting: Boolean? = null
     private var pendingNarrowBandProfileCap: Boolean? = null
     private var pendingDebugVideoLowLatency: Boolean? = null
     private var pendingAllowExternalConfiguration: Boolean? = null
@@ -397,6 +399,7 @@ class SettingsFragment : Fragment() {
         pendingAutoEnableHotspot = settings.autoEnableHotspot
         pendingFakeSpeed = settings.fakeSpeed
         pendingAutoRestartWifi = settings.autoRestartWifiWhenP2pStuck
+        pendingAirplaneWhileProjecting = settings.airplaneModeWhileProjecting
         pendingUseLibusb = settings.useLibusb
         pendingNarrowBandProfileCap = settings.narrowBandProfileCap
         pendingDebugVideoLowLatency = settings.debugVideoLowLatency
@@ -536,6 +539,7 @@ class SettingsFragment : Fragment() {
         pendingAutoEnableHotspot = settings.autoEnableHotspot
         pendingFakeSpeed = settings.fakeSpeed
         pendingAutoRestartWifi = settings.autoRestartWifiWhenP2pStuck
+        pendingAirplaneWhileProjecting = settings.airplaneModeWhileProjecting
         pendingUseLibusb = settings.useLibusb
         pendingNarrowBandProfileCap = settings.narrowBandProfileCap
         pendingDebugVideoLowLatency = settings.debugVideoLowLatency
@@ -789,6 +793,7 @@ class SettingsFragment : Fragment() {
         pendingAutoEnableHotspot?.let { if (it != settings.autoEnableHotspot) settings.autoEnableHotspot = it }
         pendingFakeSpeed?.let { if (it != settings.fakeSpeed) settings.fakeSpeed = it }
         pendingAutoRestartWifi?.let { if (it != settings.autoRestartWifiWhenP2pStuck) settings.autoRestartWifiWhenP2pStuck = it }
+        pendingAirplaneWhileProjecting?.let { if (it != settings.airplaneModeWhileProjecting) settings.airplaneModeWhileProjecting = it }
         pendingUseLibusb?.let { if (it != settings.useLibusb) settings.useLibusb = it }
         pendingNarrowBandProfileCap?.let { if (it != settings.narrowBandProfileCap) settings.narrowBandProfileCap = it }
         pendingDebugVideoLowLatency?.let { if (it != settings.debugVideoLowLatency) settings.debugVideoLowLatency = it }
@@ -943,6 +948,7 @@ class SettingsFragment : Fragment() {
                         pendingAutoEnableHotspot != settings.autoEnableHotspot ||
                         pendingFakeSpeed != settings.fakeSpeed ||
                         pendingAutoRestartWifi != settings.autoRestartWifiWhenP2pStuck ||
+                        pendingAirplaneWhileProjecting != settings.airplaneModeWhileProjecting ||
                         pendingWifiConnectionMode != settings.wifiConnectionMode ||
                         pendingHelperConnectionStrategy != settings.helperConnectionStrategy ||
                         pendingWaitForWifi != settings.waitForWifiBeforeWifiDirect ||
@@ -4718,6 +4724,34 @@ class SettingsFragment : Fragment() {
                 if (isChecked) probeWifiRestartRoute()
             }
         ))
+        items.add(SettingItem.ToggleSettingEntry(
+            stableId = "airplaneModeWhileProjecting",
+            nameResId = R.string.airplane_while_projecting_title,
+            descriptionResId = R.string.airplane_while_projecting_description,
+            isChecked = pendingAirplaneWhileProjecting ?: settings.airplaneModeWhileProjecting,
+            onCheckedChanged = { isChecked ->
+                pendingAirplaneWhileProjecting = isChecked
+                checkChanges()
+                updateSettingsList()
+                if (isChecked) probeAirplaneRoute()
+            }
+        ))
+    }
+
+    /** Same as [probeWifiRestartRoute], and also says when airplane mode would cut WiFi or Bluetooth. */
+    private fun probeAirplaneRoute() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val ctx = context ?: return@launch
+            val rootGranted = WifiStackRecovery.requestRoot()
+            if (rootGranted) settings.wifiRestartRootGranted = true
+            val message = when {
+                !ProjectionAirplaneMode.radiosAreSafe(ctx) -> R.string.airplane_while_projecting_unsafe
+                rootGranted || WifiStackRecovery.availableRoute() == OemAppManager.ExecutionBackend.ADB ->
+                    R.string.airplane_while_projecting_ready
+                else -> R.string.auto_restart_wifi_unavailable_short
+            }
+            ToastUtils.showToast(ctx, message, Toast.LENGTH_LONG, force = true)
+        }
     }
 
     /**

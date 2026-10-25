@@ -1116,6 +1116,11 @@
     <string name="auto_restart_wifi_root_granted">Root granted. WiFi will restart by itself if WiFi Direct gets stuck.</string>
     <string name="auto_restart_wifi_adb">Local ADB found. WiFi will restart by itself if WiFi Direct gets stuck.</string>
     <string name="auto_restart_wifi_unavailable">No root or local ADB on this unit, so the banner will offer a one-tap WiFi restart instead.</string>
+    <string name="auto_restart_wifi_unavailable_short">No root or local ADB on this unit, so this cannot work here.</string>
+    <string name="airplane_while_projecting_title">Airplane mode while projecting</string>
+    <string name="airplane_while_projecting_description">Turns the mobile network of this unit off during a session and back on after it, to save battery. WiFi and Bluetooth stay on. Calls and texts to the SIM of this unit do not arrive meanwhile. Needs root or local ADB.</string>
+    <string name="airplane_while_projecting_ready">Ready. Airplane mode will turn on with each session and off after it.</string>
+    <string name="airplane_while_projecting_unsafe">Airplane mode on this unit also turns off WiFi or Bluetooth, which would end the session, so it will be left alone.</string>
     <string name="connection_issue_banner_wifi_direct_refused">This unit could not create the WiFi Direct network for your phone. Try disconnecting it from other WiFi, or tap to use its hotspot instead.</string>
     <string name="connection_issue_banner_wifi_direct_cycled">Another app keeps switching WiFi Direct off, usually a preinstalled projection app such as ZLink or CarLife. Disable it, or tap to use the hotspot instead.</string>
     <string name="connection_issue_banner_wifi_radio_off">This unit\'s WiFi is off, and Android does not let the app turn it on. Turn WiFi on, or tap to use this unit\'s hotspot instead.</string>

@@ -14,6 +14,7 @@ import androidx.core.content.PermissionChecker
 import com.andrerinas.openheadunit.App
 import com.andrerinas.openheadunit.contract.LocationUpdateIntent
 import com.andrerinas.openheadunit.utils.AppLog
+import com.andrerinas.openheadunit.utils.Settings
 
 class GpsLocation constructor(private val context: Context): LocationListener {
     private val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -72,6 +73,13 @@ class GpsLocation constructor(private val context: Context): LocationListener {
     @SuppressLint("MissingPermission")
     fun start() {
         if (requested) {
+            return
+        }
+        // Only two things read this unit's own fixes: the LOCATION sensor sent to the phone, and
+        // night mode by area. With both off the phone navigates on its own GPS, and a chip left
+        // running for nobody costs battery for the whole drive.
+        if (!settings.useGpsForNavigation && settings.nightMode != Settings.NightMode.LOCATION) {
+            AppLog.i("GpsLocation: not requesting updates, nothing uses this unit's GPS")
             return
         }
         AppLog.i("Request location updates")

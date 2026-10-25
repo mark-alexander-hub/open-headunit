@@ -421,6 +421,24 @@ class Settings(private val context: Context) {
         get() = prefs.getBoolean("wifi-restart-root-granted", false)
         set(value) = prefs.edit().putBoolean("wifi-restart-root-granted", value).apply()
 
+    /**
+     * Put this unit in airplane mode for the length of a session, through root or local ADB. Off by
+     * default: the unit's own SIM gets no calls or texts meanwhile. See [ProjectionAirplaneMode].
+     */
+    var airplaneModeWhileProjecting: Boolean
+        get() = prefs.getBoolean("airplane-mode-while-projecting", false)
+        set(value) = prefs.edit().putBoolean("airplane-mode-while-projecting", value).apply()
+
+    /**
+     * Set while airplane mode is on because a session turned it on, so only that is undone - never
+     * an airplane mode the user chose - and a process killed mid-session still undoes it on its
+     * next start.
+     */
+    var airplaneModeSetBySession: Boolean
+        get() = prefs.getBoolean("airplane-mode-set-by-session", false)
+        // commit, not apply: the process can be killed seconds after a session ends.
+        set(value) { prefs.edit().putBoolean("airplane-mode-set-by-session", value).commit() }
+
     var fakeSpeed: Boolean
         get() = prefs.getBoolean("fake_speed", true)
         set(value) {
