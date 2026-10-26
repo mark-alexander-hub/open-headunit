@@ -1036,6 +1036,8 @@ class AapService : Service() {
         super.onCreate()
         AppLog.i("AapService creating...")
         instance = this
+        // An exit leaves the process alive, so the app's own start is not the moment a connection is wanted again.
+        TripLog.noteWaitingStarted()
         // A dark screen is not evidence that the car is on.
         if (ScreenPower.isInteractive(this) != false) AccPowerState.noteOn()
 

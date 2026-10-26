@@ -28,8 +28,12 @@ object P2pStackWedgePolicy {
     /** Disabled broadcasts within [WINDOW_MS] before the stack counts as cycling. */
     const val MIN_DISABLE_EDGES = 2
 
-    /** Failed creates within [WINDOW_MS] before the cycling counts as blocking us. */
-    const val MIN_CREATE_FAILURES = 3
+    /**
+     * Failed creates within [WINDOW_MS] before the cycling counts as blocking us. One is enough: the
+     * disable edges already prove the stack is cycling, and on the K9 a wedge never cleared between
+     * the first BUSY and the third - waiting for three only added ~4 s before every rescue.
+     */
+    const val MIN_CREATE_FAILURES = 1
 
     /** No second automatic restart sooner than this after the last one. */
     const val RESTART_COOLDOWN_MS = 120_000L
@@ -39,8 +43,11 @@ object P2pStackWedgePolicy {
 
     const val HOUR_MS = 3_600_000L
 
-    /** Run through root or this unit's ADB; both can call `svc`. The pause lets the supplicant exit. */
-    const val RESTART_COMMAND = "svc wifi disable && sleep 3 && svc wifi enable"
+    /**
+     * Run through root or this unit's ADB; both can call `svc`. The pause lets the supplicant exit;
+     * on the K9 one second is enough, and the group comes up ~1 s after WiFi is back.
+     */
+    const val RESTART_COMMAND = "svc wifi disable && sleep 1 && svc wifi enable"
 
     /** How many of [times] fall within [windowMs] before [now]. A time after [now] is a clock jump and is ignored. */
     fun countRecent(times: Collection<Long>, now: Long, windowMs: Long = WINDOW_MS): Int =

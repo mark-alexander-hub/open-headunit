@@ -25,9 +25,19 @@ class P2pStackWedgePolicyTest {
     }
 
     @Test
+    fun `the first failed create while the stack flaps is already a wedge`() {
+        assertTrue(P2pStackWedgePolicy.isWedged(true, disableEdgesInWindow = 2, createFailuresInWindow = 1))
+    }
+
+    @Test
     fun `a single WiFi toggle is not a wedge`() {
         assertFalse(P2pStackWedgePolicy.isWedged(true, disableEdgesInWindow = 1, createFailuresInWindow = 5))
-        assertFalse(P2pStackWedgePolicy.isWedged(true, disableEdgesInWindow = 3, createFailuresInWindow = 2))
+        assertFalse(P2pStackWedgePolicy.isWedged(true, disableEdgesInWindow = 1, createFailuresInWindow = 1))
+    }
+
+    @Test
+    fun `flapping with no create of ours refused is not a wedge`() {
+        assertFalse(P2pStackWedgePolicy.isWedged(true, disableEdgesInWindow = 6, createFailuresInWindow = 0))
     }
 
     @Test
