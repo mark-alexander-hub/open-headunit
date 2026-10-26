@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import com.andrerinas.openheadunit.App
 import com.andrerinas.openheadunit.utils.AppLog
 import org.json.JSONArray
@@ -17,6 +20,10 @@ import org.json.JSONObject
  * A session that comes back within [RESUME_WINDOW_MS] of ending continues the same trip, so a
  * WiFi Direct drop and its reconnect read as one trip with one link drop, not two short trips.
  * Also the session hook for [ParkingSpot] and [TripSleep].
+ *
+ * Each trip also keeps a battery sample every [BATTERY_SAMPLE_MS] for the graph in [TripsDialog],
+ * and how long the map took to come up: from the unit being woken or the app opened to the phone
+ * connecting, and from there to the first video frame.
  */
 object TripLog {
 
@@ -28,8 +35,13 @@ object TripLog {
     private const val MIN_GAP_MS = 3_000L
     /** Shorter than this is a failed or test connection: no trip, no parking spot. */
     private const val MIN_TRIP_MS = 2 * 60_000L
+    private const val BATTERY_SAMPLE_MS = 5 * 60_000L
+    /** A wait longer than this was the unit sitting idle, not a slow connection. */
+    private const val MAX_CONNECT_WAIT_MS = 5 * 60_000L
 
     data class MusicGap(val startMs: Long, val durationMs: Long)
+
+    data class BatterySample(val atMs: Long, val percent: Int)
 
     data class Trip(
         val startMs: Long,
@@ -37,7 +49,12 @@ object TripLog {
         val batteryStart: Int,
         val batteryEnd: Int,
         val linkDrops: Int,
-        val gaps: List<MusicGap>
+        val gaps: List<MusicGap>,
+        val battery: List<BatterySample> = emptyList(),
+        /** Woken or opened to the phone connected, or -1 when unknown. */
+        val connectMs: Long = -1,
+        /** Phone connected to the first frame of the map, or -1 when unknown. */
+        val videoMs: Long = -1
     ) {
         val durationMs: Long get() = endMs - startMs
 
@@ -55,6 +72,11 @@ object TripLog {
             put("gaps", JSONArray().apply {
                 gaps.forEach { put(JSONObject().put("at", it.startMs).put("ms", it.durationMs)) }
             })
+            put("bat", JSONArray().apply {
+                battery.forEach { put(JSONArray().put(it.atMs).put(it.percent)) }
+            })
+            put("connectMs", connectMs)
+            put("videoMs", videoMs)
         }
 
         companion object {
@@ -63,36 +85,86 @@ object TripLog {
                 val gaps = (0 until arr.length()).mapNotNull { i ->
                     arr.optJSONObject(i)?.let { MusicGap(it.optLong("at"), it.optLong("ms")) }
                 }
+                val bat = o.optJSONArray("bat") ?: JSONArray()
+                val battery = (0 until bat.length()).mapNotNull { i ->
+                    bat.optJSONArray(i)?.let { BatterySample(it.optLong(0), it.optInt(1)) }
+                }
                 return Trip(o.optLong("start"), o.optLong("end"), o.optInt("batStart", -1),
-                    o.optInt("batEnd", -1), o.optInt("linkDrops"), gaps)
+                    o.optInt("batEnd", -1), o.optInt("linkDrops"), gaps, battery,
+                    o.optLong("connectMs", -1), o.optLong("videoMs", -1))
             }
         }
     }
 
-    private class Live(val startMs: Long, val batteryStart: Int, val linkDrops: Int, gaps: List<MusicGap>) {
+    private class Live(val startMs: Long, val batteryStart: Int, val linkDrops: Int, gaps: List<MusicGap>,
+                       battery: List<BatterySample>, var connectMs: Long, var videoMs: Long) {
         val gaps = gaps.toMutableList()
+        val battery = battery.toMutableList()
         var musicPlaying = false
         var musicStoppedAt = -1L
+        /** Elapsed-realtime of the connect, until the first frame is seen. */
+        var connectedAt = -1L
+        /** Continues the newest saved trip, which stays saved until this one replaces it. */
+        var resumed = false
     }
 
+    private val handler = Handler(Looper.getMainLooper())
     private var live: Live? = null
     private var sessionActive = false
+    /** Elapsed-realtime of the app opening, the screen coming on or the last session ending. */
+    @Volatile private var waitingSince = SystemClock.elapsedRealtime()
+
+    /** From the app's start and the screen-on broadcast: the moment a connection is wanted. */
+    fun noteWaitingStarted() {
+        if (!sessionActive) waitingSince = SystemClock.elapsedRealtime()
+    }
+
+    /** The first frame of the map after a connect; later calls in the same session are ignored. */
+    @Synchronized
+    fun onFirstFrame() {
+        val trip = live ?: return
+        if (trip.connectedAt < 0) return
+        trip.videoMs = SystemClock.elapsedRealtime() - trip.connectedAt
+        trip.connectedAt = -1L
+        AppLog.i("TripLog: map up, connect ${trip.connectMs / 1000.0}s + video ${trip.videoMs / 1000.0}s")
+    }
+
+    private fun scheduleBatterySample(context: Context) {
+        handler.postDelayed({ sampleBattery(context) }, BATTERY_SAMPLE_MS)
+    }
+
+    @Synchronized
+    private fun sampleBattery(context: Context) {
+        val trip = live ?: return
+        val percent = batteryPercent(context)
+        if (percent >= 0) trip.battery.add(BatterySample(System.currentTimeMillis(), percent))
+        scheduleBatterySample(context)
+    }
 
     @Synchronized
     fun onSessionStarted(context: Context) {
         sessionActive = true
         TripSleep.cancel()
         if (!App.provide(context).settings.tripLog) return
+        val app = context.applicationContext
         val now = System.currentTimeMillis()
-        val trips = load(context)
+        val trips = load(app)
         val last = trips.firstOrNull()
         live = if (last != null && now - last.endMs in 0..RESUME_WINDOW_MS) {
-            save(context, trips.drop(1))
             AppLog.i("TripLog: session back within ${(now - last.endMs) / 1000}s, continuing the trip")
-            Live(last.startMs, last.batteryStart, last.linkDrops + 1, last.gaps)
+            // The first connect of the trip is the one worth timing, not a reconnect.
+            Live(last.startMs, last.batteryStart, last.linkDrops + 1, last.gaps, last.battery,
+                last.connectMs, last.videoMs).also { it.resumed = true }
         } else {
-            Live(now, batteryPercent(context), 0, emptyList())
+            val waited = SystemClock.elapsedRealtime() - waitingSince
+            val battery = batteryPercent(app)
+            Live(now, battery, 0, emptyList(),
+                if (battery >= 0) listOf(BatterySample(now, battery)) else emptyList(),
+                if (waited in 0..MAX_CONNECT_WAIT_MS) waited else -1L, -1L
+            ).also { it.connectedAt = SystemClock.elapsedRealtime() }
         }
+        handler.removeCallbacksAndMessages(null)
+        scheduleBatterySample(app)
     }
 
     /** The phone started or stopped the media stream. Called from the transport thread. */
@@ -117,14 +189,20 @@ object TripLog {
         // The service's destroy repeats the end of a session that already ended; only the first counts.
         if (!sessionActive) return
         sessionActive = false
+        waitingSince = SystemClock.elapsedRealtime()
+        handler.removeCallbacksAndMessages(null)
         TripSleep.onSessionEnded(context, userExit)
         val trip = live ?: return
         live = null
         val now = System.currentTimeMillis()
         if (now - trip.startMs < MIN_TRIP_MS) return
+        val batteryEnd = batteryPercent(context)
+        if (batteryEnd >= 0) trip.battery.add(BatterySample(now, batteryEnd))
         // A stop still open at the end is the music ending with the trip, not a drop.
-        val record = Trip(trip.startMs, now, trip.batteryStart, batteryPercent(context), trip.linkDrops, trip.gaps)
-        save(context, (listOf(record) + load(context)).take(MAX_TRIPS))
+        val record = Trip(trip.startMs, now, trip.batteryStart, batteryEnd, trip.linkDrops, trip.gaps,
+            trip.battery, trip.connectMs, trip.videoMs)
+        val saved = load(context).let { if (trip.resumed) it.drop(1) else it }
+        save(context, (listOf(record) + saved).take(MAX_TRIPS))
         AppLog.i("TripLog: trip saved, ${record.durationMs / 60_000} min, ${record.gaps.size} music gaps, ${record.linkDrops} link drops")
         ParkingSpot.capture(context)
     }

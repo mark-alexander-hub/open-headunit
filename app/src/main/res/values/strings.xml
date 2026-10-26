@@ -1126,6 +1126,12 @@
     <string name="sleep_after_trip_title">Screen off after a trip</string>
     <string name="sleep_after_trip_description">A minute after a trip ends, turns the screen off if the phone has left and nobody touched this unit. Never after Exit. Needs root or local ADB.</string>
     <string name="sleep_after_trip_ready">Ready. The screen will go off a minute after each trip.</string>
+    <string name="earphone_boost_title">Earphone boost</string>
+    <string name="earphone_boost_description">Louder sound while earphones are plugged in, for wind and engine noise on a bike. Peaks are softened, not clipped. The speaker and Bluetooth stay as they are.</string>
+    <string name="trips_map_loading">Loading map…</string>
+    <string name="trips_map_offline">Map needs internet once. Tap Where\'s my car to open it in Maps.</string>
+    <string name="trips_map_up">Map up in %1$s</string>
+    <string name="trips_map_up_split">Map up in %1$s (phone %2$s + video %3$s)</string>
     <string name="trips">Trips</string>
     <string name="trips_title">Trips</string>
     <string name="trips_empty">No trips yet. Turn on Trip report in Settings, then drive.</string>

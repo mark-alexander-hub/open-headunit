@@ -449,6 +449,10 @@ class Settings(private val context: Context) {
         get() = prefs.getBoolean("sleep-after-trip", false)
         set(value) = prefs.edit().putBoolean("sleep-after-trip", value).apply()
 
+    var earphoneBoost: Boolean
+        get() = prefs.getBoolean("earphone-boost", false)
+        set(value) = prefs.edit().putBoolean("earphone-boost", value).apply()
+
     var fakeSpeed: Boolean
         get() = prefs.getBoolean("fake_speed", true)
         set(value) {

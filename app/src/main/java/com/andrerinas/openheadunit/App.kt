@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.andrerinas.openheadunit.utils.OemAppManager
 import com.andrerinas.openheadunit.utils.ProjectionAirplaneMode
+import com.andrerinas.openheadunit.trip.TripLog
 import com.andrerinas.openheadunit.trip.TripSleep
 import androidx.appcompat.app.AppCompatDelegate
 import android.app.Application
@@ -64,6 +65,16 @@ class App : Application(), Application.ActivityLifecycleCallbacks {
             ContextCompat.registerReceiver(this, packageReceiver, packageFilter, ContextCompat.RECEIVER_EXPORTED)
         } catch (e: Exception) {
             AppLog.w("App", "Failed to register package change receiver", e)
+        }
+
+        // Trip timing starts when the unit is opened or woken, see TripLog.
+        TripLog.noteWaitingStarted()
+        try {
+            ContextCompat.registerReceiver(this, object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) = TripLog.noteWaitingStarted()
+            }, IntentFilter(Intent.ACTION_SCREEN_ON), ContextCompat.RECEIVER_NOT_EXPORTED)
+        } catch (e: Exception) {
+            AppLog.w("App", "Failed to register screen-on receiver", e)
         }
 
 

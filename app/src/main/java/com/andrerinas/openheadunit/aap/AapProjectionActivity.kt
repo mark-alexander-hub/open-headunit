@@ -40,6 +40,7 @@ import com.andrerinas.openheadunit.decoder.video.DecoderStopPolicy
 import com.andrerinas.openheadunit.decoder.video.SoftwareYuvFrameSink
 import com.andrerinas.openheadunit.decoder.video.VideoDecoder
 import com.andrerinas.openheadunit.decoder.video.VideoDimensionsListener
+import com.andrerinas.openheadunit.trip.TripLog
 import com.andrerinas.openheadunit.utils.AppLog
 import com.andrerinas.openheadunit.utils.BluetoothHelper
 import com.andrerinas.openheadunit.connection.self.SelfModeCallRaisePolicy
@@ -1085,6 +1086,7 @@ class AapProjectionActivity : SurfaceActivity(), IProjectionView.Callbacks, Vide
 
                                 // Re-initialize the first frame listener to hide the reconnecting overlay when video starts flowing
                                 videoDecoder.onFirstFrameListener = {
+                                    TripLog.onFirstFrame()
                                     runOnUiThread {
                                         hideReconnectingOverlay("frames resumed")
                                     }
@@ -1183,6 +1185,7 @@ class AapProjectionActivity : SurfaceActivity(), IProjectionView.Callbacks, Vide
         }
 
         videoDecoder.onFirstFrameListener = {
+            TripLog.onFirstFrame()
             runOnUiThread {
                 hideLoadingOverlay(loadingOverlay)
 

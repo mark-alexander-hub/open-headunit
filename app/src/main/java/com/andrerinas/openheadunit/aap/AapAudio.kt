@@ -105,6 +105,8 @@ internal class AapAudio(
     }
 
     private val decoderSession: AudioDecoder.PlaybackSession
+    // Earphones in or out mid-session move the gain at once, not at the next track.
+    private var earphoneWatch: Any? = null
     init {
         decoderSession = audioDecoder.openSession(AudioDecoder.PlaybackCallbacks(
             activity = ::onAudioPlaybackStarted,
@@ -114,10 +116,13 @@ internal class AapAudio(
                 playbackLease.canRender(SystemClock.elapsedRealtime()) },
             onSessionClosed = {
                 playbackLease.close()
+                EarphoneBoost.unwatch(audioManager, earphoneWatch)
                 // Post before the shared output's bounded join; all resources belong to this AapAudio.
                 mainHandler.post { releaseAllFocusOnMain() }
             }
         ))
+        // Only now: the callback fires at once with the current devices and needs the session.
+        earphoneWatch = EarphoneBoost.watch(audioManager) { updateGains() }
     }
     private val playbackFocusListener = object : AudioManager.OnAudioFocusChangeListener {
         override fun onAudioFocusChange(change: Int) {
@@ -429,7 +434,8 @@ internal class AapAudio(
             Channel.ID_AU2 -> systemVolumeOffset
             else -> 0
         }
-        val gain = (1.0f + (offset / 100.0f)).coerceIn(0.0f, 2.0f)
+        val gain = EarphoneBoost.apply((1.0f + (offset / 100.0f)).coerceIn(0.0f, 2.0f),
+            settings.earphoneBoost, audioManager)
 
         // Voice and Navigation benefit from lower latency. Cap the multiplier for those channels.
         val effectiveMultiplier = if (channel == Channel.ID_AUD) {
@@ -593,9 +599,10 @@ internal class AapAudio(
         val guidanceGain = (1.0f + (settings.guidanceVolumeOffset / 100.0f)).coerceIn(0.0f, 2.0f)
         val systemGain = (1.0f + (settings.systemVolumeOffset / 100.0f)).coerceIn(0.0f, 2.0f)
 
-        audioDecoder.setGain(Channel.ID_AUD, mediaGain, decoderSession)
-        audioDecoder.setGain(Channel.ID_AU1, guidanceGain, decoderSession)
-        audioDecoder.setGain(Channel.ID_AU2, systemGain, decoderSession)
+        val boost = settings.earphoneBoost
+        audioDecoder.setGain(Channel.ID_AUD, EarphoneBoost.apply(mediaGain, boost, audioManager), decoderSession)
+        audioDecoder.setGain(Channel.ID_AU1, EarphoneBoost.apply(guidanceGain, boost, audioManager), decoderSession)
+        audioDecoder.setGain(Channel.ID_AU2, EarphoneBoost.apply(systemGain, boost, audioManager), decoderSession)
     }
 
     internal fun streamFor(channel: Int): Int = AudioConfigs.stream(
