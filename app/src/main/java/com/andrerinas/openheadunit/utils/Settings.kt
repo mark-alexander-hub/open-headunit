@@ -449,14 +449,15 @@ class Settings(private val context: Context) {
         get() = prefs.getBoolean("sleep-after-trip", false)
         set(value) = prefs.edit().putBoolean("sleep-after-trip", value).apply()
 
+    /** Louder sound while earphones are the output. See [com.andrerinas.openheadunit.aap.EarphoneBoost]. */
     var earphoneBoost: Boolean
         get() = prefs.getBoolean("earphone-boost", false)
         set(value) = prefs.edit().putBoolean("earphone-boost", value).apply()
 
+    /** Pause the phone when earphones drop off. See [com.andrerinas.openheadunit.aap.EarphoneDropGuard]. */
     var earphoneDropGuard: Boolean
         get() = prefs.getBoolean("earphone-drop-guard", false)
         set(value) = prefs.edit().putBoolean("earphone-drop-guard", value).apply()
-
 
     var fakeSpeed: Boolean
         get() = prefs.getBoolean("fake_speed", true)

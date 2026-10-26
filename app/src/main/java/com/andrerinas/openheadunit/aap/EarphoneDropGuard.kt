@@ -75,6 +75,9 @@ internal object EarphoneDropGuard {
         audioManager = null
         sendKey = null
         pausedAt = -1L
+        // A session can end without the phone's media stop; a stale "playing" would let a later
+        // unplug and re-plug start music the user never played.
+        musicPlaying = false
     }
 
     private fun resumeIfSettled() {
