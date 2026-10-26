@@ -32,11 +32,13 @@ internal object EarphoneBoost {
             return audioManager.isWiredHeadsetOn
         }
         return try {
-            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type in EARPHONE_TYPES }
+            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { isEarphoneType(it.type) }
         } catch (e: Exception) {
             false
         }
     }
+
+    fun isEarphoneType(type: Int): Boolean = type in EARPHONE_TYPES
 
     fun apply(gain: Float, enabled: Boolean, audioManager: AudioManager): Float =
         if (enabled && earphonesConnected(audioManager)) (gain * FACTOR).coerceAtMost(MAX_GAIN) else gain

@@ -202,6 +202,7 @@ class SettingsFragment : Fragment() {
     private var pendingTripLog: Boolean? = null
     private var pendingSleepAfterTrip: Boolean? = null
     private var pendingEarphoneBoost: Boolean? = null
+    private var pendingEarphoneDropGuard: Boolean? = null
     private var pendingNarrowBandProfileCap: Boolean? = null
     private var pendingDebugVideoLowLatency: Boolean? = null
     private var pendingAllowExternalConfiguration: Boolean? = null
@@ -406,6 +407,7 @@ class SettingsFragment : Fragment() {
         pendingTripLog = settings.tripLog
         pendingSleepAfterTrip = settings.sleepAfterTrip
         pendingEarphoneBoost = settings.earphoneBoost
+        pendingEarphoneDropGuard = settings.earphoneDropGuard
         pendingUseLibusb = settings.useLibusb
         pendingNarrowBandProfileCap = settings.narrowBandProfileCap
         pendingDebugVideoLowLatency = settings.debugVideoLowLatency
@@ -549,6 +551,7 @@ class SettingsFragment : Fragment() {
         pendingTripLog = settings.tripLog
         pendingSleepAfterTrip = settings.sleepAfterTrip
         pendingEarphoneBoost = settings.earphoneBoost
+        pendingEarphoneDropGuard = settings.earphoneDropGuard
         pendingUseLibusb = settings.useLibusb
         pendingNarrowBandProfileCap = settings.narrowBandProfileCap
         pendingDebugVideoLowLatency = settings.debugVideoLowLatency
@@ -806,6 +809,7 @@ class SettingsFragment : Fragment() {
         pendingTripLog?.let { if (it != settings.tripLog) settings.tripLog = it }
         pendingSleepAfterTrip?.let { if (it != settings.sleepAfterTrip) settings.sleepAfterTrip = it }
         pendingEarphoneBoost?.let { if (it != settings.earphoneBoost) settings.earphoneBoost = it }
+        pendingEarphoneDropGuard?.let { if (it != settings.earphoneDropGuard) settings.earphoneDropGuard = it }
         pendingUseLibusb?.let { if (it != settings.useLibusb) settings.useLibusb = it }
         pendingNarrowBandProfileCap?.let { if (it != settings.narrowBandProfileCap) settings.narrowBandProfileCap = it }
         pendingDebugVideoLowLatency?.let { if (it != settings.debugVideoLowLatency) settings.debugVideoLowLatency = it }
@@ -964,6 +968,7 @@ class SettingsFragment : Fragment() {
                         pendingTripLog != settings.tripLog ||
                         pendingSleepAfterTrip != settings.sleepAfterTrip ||
                         pendingEarphoneBoost != settings.earphoneBoost ||
+                        pendingEarphoneDropGuard != settings.earphoneDropGuard ||
                         pendingWifiConnectionMode != settings.wifiConnectionMode ||
                         pendingHelperConnectionStrategy != settings.helperConnectionStrategy ||
                         pendingWaitForWifi != settings.waitForWifiBeforeWifiDirect ||
@@ -4781,6 +4786,17 @@ class SettingsFragment : Fragment() {
             isChecked = pendingEarphoneBoost ?: settings.earphoneBoost,
             onCheckedChanged = { isChecked ->
                 pendingEarphoneBoost = isChecked
+                checkChanges()
+                updateSettingsList()
+            }
+        ))
+        items.add(SettingItem.ToggleSettingEntry(
+            stableId = "earphoneDropGuard",
+            nameResId = R.string.earphone_drop_guard_title,
+            descriptionResId = R.string.earphone_drop_guard_description,
+            isChecked = pendingEarphoneDropGuard ?: settings.earphoneDropGuard,
+            onCheckedChanged = { isChecked ->
+                pendingEarphoneDropGuard = isChecked
                 checkChanges()
                 updateSettingsList()
             }

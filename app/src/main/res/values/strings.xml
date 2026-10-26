@@ -1128,6 +1128,8 @@
     <string name="sleep_after_trip_ready">Ready. The screen will go off a minute after each trip.</string>
     <string name="earphone_boost_title">Earphone boost</string>
     <string name="earphone_boost_description">Louder sound while earphones are plugged in, for wind and engine noise on a bike. Peaks are softened, not clipped. The speaker and Bluetooth stay as they are.</string>
+    <string name="earphone_drop_guard_title">Pause when earphones drop</string>
+    <string name="earphone_drop_guard_description">If the earphones come loose while music plays, pauses the phone instead of playing on into this unit\'s speaker, and plays again when they are back within 10 minutes.</string>
     <string name="trips_map_loading">Loading map…</string>
     <string name="trips_map_offline">Map needs internet once. Tap Where\'s my car to open it in Maps.</string>
     <string name="trips_map_up">Map up in %1$s</string>

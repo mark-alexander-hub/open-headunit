@@ -1359,6 +1359,12 @@ class AapService : Service() {
         nightModeManager?.start()
         ProjectionAirplaneMode.onSessionStarted(this)
         TripLog.onSessionStarted(this)
+        if (settings.earphoneDropGuard) {
+            EarphoneDropGuard.start(this) { code ->
+                commManager.sendKey(code, true, null, "earphone-drop-guard")
+                commManager.sendKey(code, false, null, "earphone-drop-guard")
+            }
+        }
 
         serviceScope.launch { commManager.startHandshake() }
     }
@@ -1612,6 +1618,7 @@ class AapService : Service() {
         nightModeManager?.stop()
         ProjectionAirplaneMode.onSessionEnded(this)
         TripLog.onSessionEnded(this, userExit = state.isUserExit)
+        EarphoneDropGuard.stop()
 
         carKeysManager.onSessionEnded()
 
@@ -2913,6 +2920,7 @@ class AapService : Service() {
         stopService(GpsLocationService.intent(this))
         ProjectionAirplaneMode.onSessionEnded(this)
         TripLog.onSessionEnded(this, userExit = true)
+        EarphoneDropGuard.stop()
         try {
             unregisterReceiver(nightModeUpdateReceiver)
             unregisterReceiver(sensorRefreshReceiver)

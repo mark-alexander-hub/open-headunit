@@ -106,7 +106,10 @@ internal class AapControlMedia(
         aapTransport.setSessionId(channel, request.sessionId)
         aapTransport.noteAudioSinkStarted(channel)
         aapAudio.preparePlayback(channel)
-        if (channel == Channel.ID_AUD) TripLog.onMusic(playing = true)
+        if (channel == Channel.ID_AUD) {
+            TripLog.onMusic(playing = true)
+            EarphoneDropGuard.onMusic(playing = true)
+        }
         return 0
     }
 
@@ -174,7 +177,10 @@ internal class AapControlMedia(
             // Before the sink goes: this silence is one the phone asked for.
             aapTransport.noteAudioSinkStopped(channel)
             aapAudio.stopAudio(channel)
-            if (channel == Channel.ID_AUD) TripLog.onMusic(playing = false)
+            if (channel == Channel.ID_AUD) {
+                TripLog.onMusic(playing = false)
+                EarphoneDropGuard.onMusic(playing = false)
+            }
         } else if (channel == Channel.ID_MIC) {
             // The mic is a source, so Channel.isAudio deliberately excludes it - widening that
             // predicate would make this head unit claim audio focus and precreate an AudioTrack for

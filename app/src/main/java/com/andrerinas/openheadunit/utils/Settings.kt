@@ -453,6 +453,11 @@ class Settings(private val context: Context) {
         get() = prefs.getBoolean("earphone-boost", false)
         set(value) = prefs.edit().putBoolean("earphone-boost", value).apply()
 
+    var earphoneDropGuard: Boolean
+        get() = prefs.getBoolean("earphone-drop-guard", false)
+        set(value) = prefs.edit().putBoolean("earphone-drop-guard", value).apply()
+
+
     var fakeSpeed: Boolean
         get() = prefs.getBoolean("fake_speed", true)
         set(value) {
