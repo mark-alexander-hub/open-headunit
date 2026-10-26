@@ -48,6 +48,7 @@ import com.andrerinas.openheadunit.main.MainActivity
 import com.andrerinas.openheadunit.R
 import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.zbt.ZbtDaemonReachability
 import com.andrerinas.openheadunit.utils.ProjectionAirplaneMode
+import com.andrerinas.openheadunit.trip.TripLog
 import com.andrerinas.openheadunit.utils.AppLog
 import com.andrerinas.openheadunit.utils.AppPermissions
 import com.andrerinas.openheadunit.utils.BluetoothAddressSeedPolicy
@@ -1357,6 +1358,7 @@ class AapService : Service() {
         startService(GpsLocationService.intent(this))
         nightModeManager?.start()
         ProjectionAirplaneMode.onSessionStarted(this)
+        TripLog.onSessionStarted(this)
 
         serviceScope.launch { commManager.startHandshake() }
     }
@@ -1609,6 +1611,7 @@ class AapService : Service() {
         stopService(GpsLocationService.intent(this))
         nightModeManager?.stop()
         ProjectionAirplaneMode.onSessionEnded(this)
+        TripLog.onSessionEnded(this, userExit = state.isUserExit)
 
         carKeysManager.onSessionEnded()
 
@@ -2909,6 +2912,7 @@ class AapService : Service() {
         nightModeManager?.stop()
         stopService(GpsLocationService.intent(this))
         ProjectionAirplaneMode.onSessionEnded(this)
+        TripLog.onSessionEnded(this, userExit = true)
         try {
             unregisterReceiver(nightModeUpdateReceiver)
             unregisterReceiver(sensorRefreshReceiver)

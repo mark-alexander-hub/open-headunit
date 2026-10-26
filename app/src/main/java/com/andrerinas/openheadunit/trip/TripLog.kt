@@ -1,0 +1,164 @@
+package com.andrerinas.openheadunit.trip
+
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
+import com.andrerinas.openheadunit.App
+import com.andrerinas.openheadunit.utils.AppLog
+import org.json.JSONArray
+import org.json.JSONObject
+
+/**
+ * A short record of each drive or ride, kept on this unit so it can be read without a computer:
+ * when it ran, the battery it used, how often the link to the phone dropped, and every time the
+ * phone stopped sending music mid-session - a gap the head unit cannot fix but can at least date.
+ *
+ * A session that comes back within [RESUME_WINDOW_MS] of ending continues the same trip, so a
+ * WiFi Direct drop and its reconnect read as one trip with one link drop, not two short trips.
+ * Also the session hook for [ParkingSpot] and [TripSleep].
+ */
+object TripLog {
+
+    private const val PREFS = "trip_log"
+    private const val KEY_TRIPS = "trips"
+    private const val MAX_TRIPS = 30
+    private const val RESUME_WINDOW_MS = 3 * 60_000L
+    /** Shorter than this is a track change, not a drop. */
+    private const val MIN_GAP_MS = 3_000L
+    /** Shorter than this is a failed or test connection: no trip, no parking spot. */
+    private const val MIN_TRIP_MS = 2 * 60_000L
+
+    data class MusicGap(val startMs: Long, val durationMs: Long)
+
+    data class Trip(
+        val startMs: Long,
+        val endMs: Long,
+        val batteryStart: Int,
+        val batteryEnd: Int,
+        val linkDrops: Int,
+        val gaps: List<MusicGap>
+    ) {
+        val durationMs: Long get() = endMs - startMs
+
+        /** Battery points per hour, or null when unreadable or too short to mean anything. */
+        val batteryPerHour: Double?
+            get() = if (batteryStart < 0 || batteryEnd < 0 || durationMs < 10 * 60_000L) null
+            else (batteryStart - batteryEnd) * 3_600_000.0 / durationMs
+
+        fun toJson(): JSONObject = JSONObject().apply {
+            put("start", startMs)
+            put("end", endMs)
+            put("batStart", batteryStart)
+            put("batEnd", batteryEnd)
+            put("linkDrops", linkDrops)
+            put("gaps", JSONArray().apply {
+                gaps.forEach { put(JSONObject().put("at", it.startMs).put("ms", it.durationMs)) }
+            })
+        }
+
+        companion object {
+            fun fromJson(o: JSONObject): Trip {
+                val arr = o.optJSONArray("gaps") ?: JSONArray()
+                val gaps = (0 until arr.length()).mapNotNull { i ->
+                    arr.optJSONObject(i)?.let { MusicGap(it.optLong("at"), it.optLong("ms")) }
+                }
+                return Trip(o.optLong("start"), o.optLong("end"), o.optInt("batStart", -1),
+                    o.optInt("batEnd", -1), o.optInt("linkDrops"), gaps)
+            }
+        }
+    }
+
+    private class Live(val startMs: Long, val batteryStart: Int, val linkDrops: Int, gaps: List<MusicGap>) {
+        val gaps = gaps.toMutableList()
+        var musicPlaying = false
+        var musicStoppedAt = -1L
+    }
+
+    private var live: Live? = null
+    private var sessionActive = false
+
+    @Synchronized
+    fun onSessionStarted(context: Context) {
+        sessionActive = true
+        TripSleep.cancel()
+        if (!App.provide(context).settings.tripLog) return
+        val now = System.currentTimeMillis()
+        val trips = load(context)
+        val last = trips.firstOrNull()
+        live = if (last != null && now - last.endMs in 0..RESUME_WINDOW_MS) {
+            save(context, trips.drop(1))
+            AppLog.i("TripLog: session back within ${(now - last.endMs) / 1000}s, continuing the trip")
+            Live(last.startMs, last.batteryStart, last.linkDrops + 1, last.gaps)
+        } else {
+            Live(now, batteryPercent(context), 0, emptyList())
+        }
+    }
+
+    /** The phone started or stopped the media stream. Called from the transport thread. */
+    @Synchronized
+    fun onMusic(playing: Boolean) {
+        val trip = live ?: return
+        val now = System.currentTimeMillis()
+        if (playing) {
+            if (trip.musicStoppedAt > 0 && now - trip.musicStoppedAt >= MIN_GAP_MS) {
+                trip.gaps.add(MusicGap(trip.musicStoppedAt, now - trip.musicStoppedAt))
+            }
+            trip.musicStoppedAt = -1L
+            trip.musicPlaying = true
+        } else if (trip.musicPlaying) {
+            trip.musicPlaying = false
+            trip.musicStoppedAt = now
+        }
+    }
+
+    @Synchronized
+    fun onSessionEnded(context: Context, userExit: Boolean) {
+        // The service's destroy repeats the end of a session that already ended; only the first counts.
+        if (!sessionActive) return
+        sessionActive = false
+        TripSleep.onSessionEnded(context, userExit)
+        val trip = live ?: return
+        live = null
+        val now = System.currentTimeMillis()
+        if (now - trip.startMs < MIN_TRIP_MS) return
+        // A stop still open at the end is the music ending with the trip, not a drop.
+        val record = Trip(trip.startMs, now, trip.batteryStart, batteryPercent(context), trip.linkDrops, trip.gaps)
+        save(context, (listOf(record) + load(context)).take(MAX_TRIPS))
+        AppLog.i("TripLog: trip saved, ${record.durationMs / 60_000} min, ${record.gaps.size} music gaps, ${record.linkDrops} link drops")
+        ParkingSpot.capture(context)
+    }
+
+    /** Newest first. */
+    fun load(context: Context): List<Trip> {
+        val json = prefs(context).getString(KEY_TRIPS, null) ?: return emptyList()
+        return try {
+            val arr = JSONArray(json)
+            (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { Trip.fromJson(it) } }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun clear(context: Context) = prefs(context).edit().remove(KEY_TRIPS).apply()
+
+    private fun save(context: Context, trips: List<Trip>) {
+        val arr = JSONArray()
+        trips.forEach { arr.put(it.toJson()) }
+        // commit, not apply: the process can be killed seconds after a session ends.
+        prefs(context).edit().putString(KEY_TRIPS, arr.toString()).commit()
+    }
+
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** 0-100, or -1 when the battery cannot be read. The sticky broadcast works on every API level. */
+    private fun batteryPercent(context: Context): Int = try {
+        val intent = context.applicationContext.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        if (level < 0 || scale <= 0) -1 else level * 100 / scale
+    } catch (e: Exception) {
+        -1
+    }
+}

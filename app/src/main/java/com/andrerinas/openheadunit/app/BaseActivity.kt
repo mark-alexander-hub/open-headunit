@@ -20,6 +20,7 @@ import com.andrerinas.openheadunit.utils.AppLog
 import com.andrerinas.openheadunit.utils.AppThemeManager
 import com.andrerinas.openheadunit.utils.LocaleHelper
 import com.andrerinas.openheadunit.utils.Settings
+import com.andrerinas.openheadunit.trip.TripSleep
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
@@ -42,6 +43,11 @@ open class BaseActivity : AppCompatActivity() {
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(LocaleHelper.wrapContext(newBase))
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        TripSleep.noteUserInteraction()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

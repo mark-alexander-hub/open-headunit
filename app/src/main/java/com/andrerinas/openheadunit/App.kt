@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.andrerinas.openheadunit.utils.OemAppManager
 import com.andrerinas.openheadunit.utils.ProjectionAirplaneMode
+import com.andrerinas.openheadunit.trip.TripSleep
 import androidx.appcompat.app.AppCompatDelegate
 import android.app.Application
 import android.app.NotificationChannel
@@ -195,8 +196,8 @@ class App : Application(), Application.ActivityLifecycleCallbacks {
             FloatingButtonManager.onAppForegroundChanged(this, isForeground = true)
         }
     }
-    override fun onActivityResumed(activity: Activity) {}
-    override fun onActivityPaused(activity: Activity) {}
+    override fun onActivityResumed(activity: Activity) = TripSleep.noteActivityResumed()
+    override fun onActivityPaused(activity: Activity) = TripSleep.noteActivityPaused()
     override fun onActivityStopped(activity: Activity) {
         startedActivityCount--
         if (startedActivityCount <= 0) {

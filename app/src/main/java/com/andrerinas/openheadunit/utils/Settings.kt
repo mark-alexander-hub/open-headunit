@@ -439,6 +439,16 @@ class Settings(private val context: Context) {
         // commit, not apply: the process can be killed seconds after a session ends.
         set(value) { prefs.edit().putBoolean("airplane-mode-set-by-session", value).commit() }
 
+    /** Keep a short report of each trip and where it ended. See [com.andrerinas.openheadunit.trip.TripLog]. */
+    var tripLog: Boolean
+        get() = prefs.getBoolean("trip-log", false)
+        set(value) = prefs.edit().putBoolean("trip-log", value).apply()
+
+    /** Turn the screen off a minute after a trip ends. See [com.andrerinas.openheadunit.trip.TripSleep]. */
+    var sleepAfterTrip: Boolean
+        get() = prefs.getBoolean("sleep-after-trip", false)
+        set(value) = prefs.edit().putBoolean("sleep-after-trip", value).apply()
+
     var fakeSpeed: Boolean
         get() = prefs.getBoolean("fake_speed", true)
         set(value) {

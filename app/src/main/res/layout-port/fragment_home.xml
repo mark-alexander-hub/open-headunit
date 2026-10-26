@@ -269,6 +269,19 @@
 
     </LinearLayout>
 
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/trips_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_margin="16dp"
+        android:text="@string/trips"
+        app:backgroundTint="@color/material_grey_700"
+        android:textColor="@android:color/white"
+        app:cornerRadius="8dp"
+        android:visibility="gone" />
+
    <com.google.android.material.button.MaterialButton
         android:id="@+id/apps_button"
         android:layout_width="wrap_content"

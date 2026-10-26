@@ -199,6 +199,8 @@ class SettingsFragment : Fragment() {
     private var pendingFakeSpeed: Boolean? = null
     private var pendingAutoRestartWifi: Boolean? = null
     private var pendingAirplaneWhileProjecting: Boolean? = null
+    private var pendingTripLog: Boolean? = null
+    private var pendingSleepAfterTrip: Boolean? = null
     private var pendingNarrowBandProfileCap: Boolean? = null
     private var pendingDebugVideoLowLatency: Boolean? = null
     private var pendingAllowExternalConfiguration: Boolean? = null
@@ -400,6 +402,8 @@ class SettingsFragment : Fragment() {
         pendingFakeSpeed = settings.fakeSpeed
         pendingAutoRestartWifi = settings.autoRestartWifiWhenP2pStuck
         pendingAirplaneWhileProjecting = settings.airplaneModeWhileProjecting
+        pendingTripLog = settings.tripLog
+        pendingSleepAfterTrip = settings.sleepAfterTrip
         pendingUseLibusb = settings.useLibusb
         pendingNarrowBandProfileCap = settings.narrowBandProfileCap
         pendingDebugVideoLowLatency = settings.debugVideoLowLatency
@@ -540,6 +544,8 @@ class SettingsFragment : Fragment() {
         pendingFakeSpeed = settings.fakeSpeed
         pendingAutoRestartWifi = settings.autoRestartWifiWhenP2pStuck
         pendingAirplaneWhileProjecting = settings.airplaneModeWhileProjecting
+        pendingTripLog = settings.tripLog
+        pendingSleepAfterTrip = settings.sleepAfterTrip
         pendingUseLibusb = settings.useLibusb
         pendingNarrowBandProfileCap = settings.narrowBandProfileCap
         pendingDebugVideoLowLatency = settings.debugVideoLowLatency
@@ -794,6 +800,8 @@ class SettingsFragment : Fragment() {
         pendingFakeSpeed?.let { if (it != settings.fakeSpeed) settings.fakeSpeed = it }
         pendingAutoRestartWifi?.let { if (it != settings.autoRestartWifiWhenP2pStuck) settings.autoRestartWifiWhenP2pStuck = it }
         pendingAirplaneWhileProjecting?.let { if (it != settings.airplaneModeWhileProjecting) settings.airplaneModeWhileProjecting = it }
+        pendingTripLog?.let { if (it != settings.tripLog) settings.tripLog = it }
+        pendingSleepAfterTrip?.let { if (it != settings.sleepAfterTrip) settings.sleepAfterTrip = it }
         pendingUseLibusb?.let { if (it != settings.useLibusb) settings.useLibusb = it }
         pendingNarrowBandProfileCap?.let { if (it != settings.narrowBandProfileCap) settings.narrowBandProfileCap = it }
         pendingDebugVideoLowLatency?.let { if (it != settings.debugVideoLowLatency) settings.debugVideoLowLatency = it }
@@ -949,6 +957,8 @@ class SettingsFragment : Fragment() {
                         pendingFakeSpeed != settings.fakeSpeed ||
                         pendingAutoRestartWifi != settings.autoRestartWifiWhenP2pStuck ||
                         pendingAirplaneWhileProjecting != settings.airplaneModeWhileProjecting ||
+                        pendingTripLog != settings.tripLog ||
+                        pendingSleepAfterTrip != settings.sleepAfterTrip ||
                         pendingWifiConnectionMode != settings.wifiConnectionMode ||
                         pendingHelperConnectionStrategy != settings.helperConnectionStrategy ||
                         pendingWaitForWifi != settings.waitForWifiBeforeWifiDirect ||
@@ -4736,6 +4746,41 @@ class SettingsFragment : Fragment() {
                 if (isChecked) probeAirplaneRoute()
             }
         ))
+        items.add(SettingItem.ToggleSettingEntry(
+            stableId = "tripLog",
+            nameResId = R.string.trip_log_title,
+            descriptionResId = R.string.trip_log_description,
+            isChecked = pendingTripLog ?: settings.tripLog,
+            onCheckedChanged = { isChecked ->
+                pendingTripLog = isChecked
+                checkChanges()
+                updateSettingsList()
+            }
+        ))
+        items.add(SettingItem.ToggleSettingEntry(
+            stableId = "sleepAfterTrip",
+            nameResId = R.string.sleep_after_trip_title,
+            descriptionResId = R.string.sleep_after_trip_description,
+            isChecked = pendingSleepAfterTrip ?: settings.sleepAfterTrip,
+            onCheckedChanged = { isChecked ->
+                pendingSleepAfterTrip = isChecked
+                checkChanges()
+                updateSettingsList()
+                if (isChecked) probeSleepRoute()
+            }
+        ))
+    }
+
+    /** Screen off needs root or local ADB, like the WiFi restart; say which, or that neither is there. */
+    private fun probeSleepRoute() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val ctx = context ?: return@launch
+            val rootGranted = WifiStackRecovery.requestRoot()
+            if (rootGranted) settings.wifiRestartRootGranted = true
+            val ready = rootGranted || WifiStackRecovery.availableRoute() == OemAppManager.ExecutionBackend.ADB
+            val message = if (ready) R.string.sleep_after_trip_ready else R.string.auto_restart_wifi_unavailable_short
+            ToastUtils.showToast(ctx, message, Toast.LENGTH_LONG, force = true)
+        }
     }
 
     /** Same as [probeWifiRestartRoute], and also says when airplane mode would cut WiFi or Bluetooth. */

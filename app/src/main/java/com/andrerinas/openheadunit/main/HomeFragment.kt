@@ -1,5 +1,6 @@
 package com.andrerinas.openheadunit.main
 
+import com.andrerinas.openheadunit.trip.TripsDialog
 import android.content.Context
 import android.content.Intent
 import android.hardware.usb.UsbManager
@@ -92,6 +93,7 @@ class HomeFragment : Fragment() {
     private lateinit var wifi_text_view: TextView
     private lateinit var exitButton: Button
     private lateinit var appsButton: Button
+    private lateinit var tripsButton: Button
     private lateinit var self_mode_text: TextView
     private var hasAttemptedAutoConnect = false
     private var hasAttemptedSingleUsbAutoConnect = false
@@ -123,6 +125,7 @@ class HomeFragment : Fragment() {
         wifi_text_view = view.findViewById(R.id.wifi_text)
         exitButton = view.findViewById(R.id.exit_button)
         appsButton = view.findViewById(R.id.apps_button)
+        tripsButton = view.findViewById(R.id.trips_button)
         self_mode_text = view.findViewById(R.id.self_mode_text)
 
         // Portrait layout: cap grid width so square buttons never overflow
@@ -372,12 +375,15 @@ class HomeFragment : Fragment() {
         )
         exitButton.visibility = if (shouldShowExit) View.VISIBLE else View.GONE
         appsButton.visibility = if (isLauncherActive) View.VISIBLE else View.GONE
+        tripsButton.visibility = if (appSettings.tripLog) View.VISIBLE else View.GONE
         if (isLauncherActive) {
             AppDrawerFragment.preload(ctx)
         }
     }
 
     private fun setupListeners() {
+        tripsButton.setOnClickListener { activity?.let { TripsDialog.show(it) } }
+
         appsButton.setOnClickListener {
             val controller = findNavController()
             if (controller.currentDestination?.id == R.id.homeFragment) {
@@ -1279,6 +1285,7 @@ class HomeFragment : Fragment() {
         }
 
         exitButton.setTextColor(Color.WHITE)
+        tripsButton.setTextColor(Color.WHITE)
         appsButton.setTextColor(Color.WHITE)
     }
 
