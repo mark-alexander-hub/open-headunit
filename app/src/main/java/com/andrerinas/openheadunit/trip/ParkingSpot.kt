@@ -17,8 +17,12 @@ import com.andrerinas.openheadunit.utils.AppLog
 
 /**
  * Where the vehicle was left: one location fix taken when a trip ends, so "where did I park" has
- * an answer later. This unit's GPS runs only for that fix - at most [MAX_WAIT_MS] - and is off
- * the rest of the time, so the cost is a minute of GPS per trip.
+ * an answer later.
+ *
+ * A fix asked for only at the end often never comes: the GPS was off for the whole trip and
+ * airplane mode left it no network assistance, so it starts cold, often parked under a roof. So
+ * during the trip the GPS keeps a slow fix every [TRACK_INTERVAL_MS] and the end starts from the
+ * newest of those; the end-of-trip listen only improves on it.
  */
 object ParkingSpot {
 
@@ -32,25 +36,74 @@ object ParkingSpot {
     private const val GOOD_ACCURACY_M = 30f
     /** A last known fix this fresh is still where the trip ended. */
     private const val LAST_KNOWN_MAX_AGE_MS = 5 * 60_000L
+    /** Slow enough to cost little over a ride, fast enough that the last fix is near the stop. */
+    private const val TRACK_INTERVAL_MS = 15_000L
 
     data class Spot(val latitude: Double, val longitude: Double, val accuracyM: Float, val timeMs: Long)
 
     private val handler = Handler(Looper.getMainLooper())
     private var listener: LocationListener? = null
     private var best: Location? = null
+    private var tracker: LocationListener? = null
+    private var lastTracked: Location? = null
+
+    /** The trip started: keep a slow GPS fix going so its end has a recent one to start from. */
+    @SuppressLint("MissingPermission")
+    fun startTracking(context: Context) {
+        val app = context.applicationContext
+        handler.post {
+            if (tracker != null) return@post
+            if (!hasPermission(app)) return@post
+            val lm = app.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return@post
+            val t = object : LocationListener {
+                override fun onLocationChanged(location: Location) {
+                    if (lastTracked == null) AppLog.i("ParkingSpot: first trip fix, accuracy ${location.accuracy.toInt()} m")
+                    lastTracked = location
+                }
+                @Deprecated("Deprecated in Java")
+                override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+                override fun onProviderEnabled(provider: String) {}
+                override fun onProviderDisabled(provider: String) {}
+            }
+            try {
+                if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                    lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, TRACK_INTERVAL_MS, 0f, t, Looper.getMainLooper())
+                    tracker = t
+                }
+            } catch (e: Exception) {
+                AppLog.w("ParkingSpot: GPS unavailable for the trip: ${e.message}")
+            }
+        }
+    }
+
+    /** A session too short to count as a trip: nothing to capture, just let the GPS go. */
+    fun stopTracking(context: Context) {
+        val app = context.applicationContext
+        handler.post { releaseTracker(app); lastTracked = null }
+    }
+
+    private fun releaseTracker(app: Context) {
+        val t = tracker ?: return
+        tracker = null
+        val lm = app.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
+        try { lm.removeUpdates(t) } catch (_: Exception) {}
+    }
 
     @SuppressLint("MissingPermission")
     fun capture(context: Context) {
         val app = context.applicationContext
         handler.post {
+            releaseTracker(app)
+            val tracked = lastTracked?.takeIf { System.currentTimeMillis() - it.time <= LAST_KNOWN_MAX_AGE_MS }
+            lastTracked = null
             if (listener != null) return@post // one capture at a time
-            if (ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
+            if (!hasPermission(app)) {
                 AppLog.w("ParkingSpot: no location permission, not saving where the trip ended")
                 return@post
             }
             val lm = app.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return@post
-            best = freshLastKnown(lm)
+            // The newest trip fix, not the most accurate: an older sharper one is further back up the road.
+            best = tracked ?: freshLastKnown(lm)
             val l = object : LocationListener {
                 override fun onLocationChanged(location: Location) {
                     if (best == null || location.accuracy < best!!.accuracy) best = location
@@ -96,6 +149,10 @@ object ParkingSpot {
             .apply()
         AppLog.i("ParkingSpot: saved, accuracy ${fix.accuracy.toInt()} m")
     }
+
+    private fun hasPermission(context: Context) =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
 
     @SuppressLint("MissingPermission")
     private fun freshLastKnown(lm: LocationManager): Location? =

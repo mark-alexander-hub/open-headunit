@@ -165,6 +165,7 @@ object TripLog {
         }
         handler.removeCallbacksAndMessages(null)
         scheduleBatterySample(app)
+        ParkingSpot.startTracking(app)
     }
 
     /** The phone started or stopped the media stream. Called from the transport thread. */
@@ -195,7 +196,10 @@ object TripLog {
         val trip = live ?: return
         live = null
         val now = System.currentTimeMillis()
-        if (now - trip.startMs < MIN_TRIP_MS) return
+        if (now - trip.startMs < MIN_TRIP_MS) {
+            ParkingSpot.stopTracking(context)
+            return
+        }
         val batteryEnd = batteryPercent(context)
         if (batteryEnd >= 0) trip.battery.add(BatterySample(now, batteryEnd))
         // A stop still open at the end is the music ending with the trip, not a drop.
