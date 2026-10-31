@@ -43,6 +43,14 @@ object TripLog {
     private const val MAX_CONNECT_WAIT_MS = 5 * 60_000L
     private const val LOW_BATTERY_PERCENT = 25
 
+    /** The steps of a connect, in the order they normally happen. [WIFI_RESTART] is the wedge rescue. */
+    enum class Step(val key: String) {
+        WIFI_RESTART("wifiRestart"),
+        GROUP_UP("group"),
+        PHONE_BLUETOOTH("phoneBt"),
+        PHONE_ON_WIFI("phoneWifi")
+    }
+
     data class MusicGap(val startMs: Long, val durationMs: Long)
 
     data class BatterySample(val atMs: Long, val percent: Int)
@@ -61,7 +69,9 @@ object TripLog {
         val videoMs: Long = -1,
         /** Hottest CPU and battery during the trip in milli-degrees C, or -1 when unread. See [TripHeat]. */
         val cpuMaxMilliC: Int = -1,
-        val batteryMaxMilliC: Int = -1
+        val batteryMaxMilliC: Int = -1,
+        /** Where the connect wait went: ms from the wait's start to each [Step], -1 when not seen. */
+        val steps: Map<Step, Long> = emptyMap()
     ) {
         val durationMs: Long get() = endMs - startMs
 
@@ -86,6 +96,7 @@ object TripLog {
             put("videoMs", videoMs)
             put("cpuMax", cpuMaxMilliC)
             put("batMax", batteryMaxMilliC)
+            put("steps", JSONObject().apply { steps.forEach { (k, v) -> put(k.key, v) } })
         }
 
         companion object {
@@ -101,14 +112,18 @@ object TripLog {
                 return Trip(o.optLong("start"), o.optLong("end"), o.optInt("batStart", -1),
                     o.optInt("batEnd", -1), o.optInt("linkDrops"), gaps, battery,
                     o.optLong("connectMs", -1), o.optLong("videoMs", -1),
-                    o.optInt("cpuMax", -1), o.optInt("batMax", -1))
+                    o.optInt("cpuMax", -1), o.optInt("batMax", -1),
+                    o.optJSONObject("steps")?.let { s ->
+                        Step.values().mapNotNull { st -> if (s.has(st.key)) st to s.optLong(st.key) else null }.toMap()
+                    } ?: emptyMap())
             }
         }
     }
 
     private class Live(val startMs: Long, val batteryStart: Int, val linkDrops: Int, gaps: List<MusicGap>,
                        battery: List<BatterySample>, var connectMs: Long, var videoMs: Long,
-                       val cpuMaxSoFar: Int = -1, val batteryMaxSoFar: Int = -1) {
+                       val cpuMaxSoFar: Int = -1, val batteryMaxSoFar: Int = -1,
+                       val steps: Map<Step, Long> = emptyMap()) {
         val gaps = gaps.toMutableList()
         val battery = battery.toMutableList()
         var musicPlaying = false
@@ -125,10 +140,25 @@ object TripLog {
     /** Elapsed-realtime of the app opening, the screen coming on or the last session ending. */
     @Volatile private var waitingSince = SystemClock.elapsedRealtime()
 
+    /** Elapsed-realtime of the first time each [Step] happened while waiting for a session. */
+    private val stepsSeen = java.util.concurrent.ConcurrentHashMap<Step, Long>()
+
     /** From the app's start and the screen-on broadcast: the moment a connection is wanted. */
     fun noteWaitingStarted() {
         if (!sessionActive) waitingSince = SystemClock.elapsedRealtime()
     }
+
+    /** A step of the connect happened; only the first of each while waiting counts. Any thread. */
+    fun noteStep(step: Step) {
+        if (sessionActive) return
+        val now = SystemClock.elapsedRealtime()
+        // A step left over from before the current wait began is replaced, not kept.
+        stepsSeen.compute(step) { _, old -> if (old == null || old < waitingSince) now else old }
+    }
+
+    /** Each step as ms after [since]; steps from before the wait began belong to an older wait. */
+    private fun stepsSince(since: Long): Map<Step, Long> =
+        stepsSeen.filterValues { it >= since }.mapValues { it.value - since }
 
     /** The first frame of the map after a connect; later calls in the same session are ignored. */
     @Synchronized
@@ -165,16 +195,22 @@ object TripLog {
             AppLog.i("TripLog: session back within ${(now - last.endMs) / 1000}s, continuing the trip")
             // The first connect of the trip is the one worth timing, not a reconnect.
             Live(last.startMs, last.batteryStart, last.linkDrops + 1, last.gaps, last.battery,
-                last.connectMs, last.videoMs, last.cpuMaxMilliC, last.batteryMaxMilliC).also { it.resumed = true }
+                last.connectMs, last.videoMs, last.cpuMaxMilliC, last.batteryMaxMilliC, last.steps)
+                .also { it.resumed = true }
         } else {
             val waited = SystemClock.elapsedRealtime() - waitingSince
+            val timed = waited in 0..MAX_CONNECT_WAIT_MS
             val battery = batteryPercent(app)
             if (battery in 0 until LOW_BATTERY_PERCENT && !isCharging(app)) warnLowBattery(app, battery)
+            val steps = if (timed) stepsSince(waitingSince) else emptyMap()
+            if (steps.isNotEmpty()) AppLog.i("TripLog: connect steps " +
+                steps.entries.sortedBy { it.value }.joinToString { "${it.key.key} ${it.value / 1000.0}s" })
             Live(now, battery, 0, emptyList(),
                 if (battery >= 0) listOf(BatterySample(now, battery)) else emptyList(),
-                if (waited in 0..MAX_CONNECT_WAIT_MS) waited else -1L, -1L
+                if (timed) waited else -1L, -1L, steps = steps
             ).also { it.connectedAt = SystemClock.elapsedRealtime() }
         }
+        stepsSeen.clear()
         handler.removeCallbacksAndMessages(null)
         scheduleBatterySample(app)
         ParkingSpot.startTracking(app)
@@ -224,6 +260,7 @@ object TripLog {
         if (!sessionActive) return
         sessionActive = false
         waitingSince = SystemClock.elapsedRealtime()
+        stepsSeen.clear()
         handler.removeCallbacksAndMessages(null)
         TripSleep.onSessionEnded(context, userExit)
         val trip = live ?: return
@@ -238,7 +275,7 @@ object TripLog {
         if (batteryEnd >= 0) trip.battery.add(BatterySample(now, batteryEnd))
         // A stop still open at the end is the music ending with the trip, not a drop.
         val record = Trip(trip.startMs, now, trip.batteryStart, batteryEnd, trip.linkDrops, trip.gaps,
-            trip.battery, trip.connectMs, trip.videoMs, TripHeat.cpuMax, TripHeat.batteryMax)
+            trip.battery, trip.connectMs, trip.videoMs, TripHeat.cpuMax, TripHeat.batteryMax, trip.steps)
         val saved = load(context).let { if (trip.resumed) it.drop(1) else it }
         save(context, (listOf(record) + saved).take(MAX_TRIPS))
         AppLog.i("TripLog: trip saved, ${record.durationMs / 60_000} min, ${record.gaps.size} music gaps, ${record.linkDrops} link drops")

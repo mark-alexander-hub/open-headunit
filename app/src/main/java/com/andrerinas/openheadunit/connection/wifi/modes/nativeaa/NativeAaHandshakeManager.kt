@@ -3275,6 +3275,7 @@ class NativeAaHandshakeManager(
             feed(WppEvent.SocketReady)
 
             AppLog.i("NativeAA: Phone connected. Current credentials state: SSID=${credentials?.ssid ?: "<null>"}, IP=${credentials?.ip ?: "<null>"}")
+            com.andrerinas.openheadunit.trip.TripLog.noteStep(com.andrerinas.openheadunit.trip.TripLog.Step.PHONE_BLUETOOTH)
             AppLog.i("NativeAA: Waiting for WiFi credentials to be ready (Max ${CREDENTIALS_WAIT_MS / 1000}s)...")
 
             // A message the daemon dropped before the phone's channel existed is invisible to

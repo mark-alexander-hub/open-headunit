@@ -56,6 +56,7 @@ object WifiStackRecovery {
             return@withContext false to "no root and no local ADB"
         }
         AppLog.w("WifiStackRecovery: restarting WiFi via $route ($reason).")
+        com.andrerinas.openheadunit.trip.TripLog.noteStep(com.andrerinas.openheadunit.trip.TripLog.Step.WIFI_RESTART)
         val (code, out) = try {
             OemAppManager.executeCommand(context, P2pStackWedgePolicy.RESTART_COMMAND)
         } catch (e: Exception) {

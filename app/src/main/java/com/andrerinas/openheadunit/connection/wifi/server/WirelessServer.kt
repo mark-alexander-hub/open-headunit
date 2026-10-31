@@ -128,6 +128,7 @@ class WirelessServer(
                     AppLog.d("WirelessServer: Waiting for TCP connection on port 5288...")
                     val clientSocket = serverSocket?.accept() ?: break
                     AppLog.i("WirelessServer: Incoming connection detected from ${clientSocket.inetAddress}")
+                    com.andrerinas.openheadunit.trip.TripLog.noteStep(com.andrerinas.openheadunit.trip.TripLog.Step.PHONE_ON_WIFI)
                     service.serviceScope.launch {
                         if (commManager.isConnected) {
                             AppLog.w("WirelessServer: Already connected, dropping client from ${clientSocket.inetAddress}")

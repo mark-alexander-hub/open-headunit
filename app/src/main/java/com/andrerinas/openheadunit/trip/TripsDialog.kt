@@ -115,9 +115,25 @@ object TripsDialog {
         }
         body.addView(text(activity, "Link drops: " + trip.linkDrops, if (trip.linkDrops > 0) GAP else MUTED, 14f))
         mapUp(activity, trip)?.let { body.addView(text(activity, it, MUTED, 14f)) }
+        steps(trip)?.let { body.addView(text(activity, it, MUTED, 13f)) }
         heat(trip)?.let { (line, hot) -> body.addView(text(activity, line, if (hot) GAP else MUTED, 14f)) }
         return card(activity, body)
     }
+
+    /** "WiFi restart 0.9 s → link up 6.8 s → phone BT 7.9 s → phone on WiFi 12.3 s", in time order. */
+    private fun steps(trip: TripLog.Trip): String? {
+        if (trip.steps.isEmpty()) return null
+        return trip.steps.entries.sortedBy { it.value }.joinToString(" → ") { (step, ms) ->
+            when (step) {
+                TripLog.Step.WIFI_RESTART -> "WiFi restart"
+                TripLog.Step.GROUP_UP -> "link up"
+                TripLog.Step.PHONE_BLUETOOTH -> "phone BT"
+                TripLog.Step.PHONE_ON_WIFI -> "phone on WiFi"
+            } + " " + seconds1(ms)
+        }
+    }
+
+    private fun seconds1(ms: Long) = String.format(Locale.US, "%.1f s", ms / 1000.0)
 
     /** "Hottest: CPU 52 °C · battery 38 °C", red from [HOT_MILLI_C]; null when nothing was read. */
     private fun heat(trip: TripLog.Trip): Pair<String, Boolean>? {

@@ -1549,6 +1549,7 @@ class WifiDirectManager(private val context: Context) : WifiP2pManager.Connectio
                                     gradeGroupAddress(ssid, psk, ip, deliveryEpoch, deliveryStability, deliveryOrigin)
                                 } else deliveryStability
                             AppLog.i("WifiDirectManager: SUCCESS - Providing credentials to listener. SSID=$ssid, IP=$finalIp, BSSID=$bssid, identity stable=${GroupIdentityStabilityPolicy.label(deliveredStability)}")
+                            com.andrerinas.openheadunit.trip.TripLog.noteStep(com.andrerinas.openheadunit.trip.TripLog.Step.GROUP_UP)
                             // Our own listener, not the phone, and it fires three or four times
                             // per group — so it stays on the network step and re-reports as a no-op.
                             ConnectionStageTracker.report(ConnectionStage.CREATING_NETWORK)
