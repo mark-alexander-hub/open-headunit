@@ -1621,6 +1621,7 @@ class AapService : Service() {
         ProjectionAirplaneMode.onSessionEnded(this)
         TripLog.onSessionEnded(this, userExit = state.isUserExit)
         EarphoneDropGuard.stop()
+        DrivingVideoLock.stop()
 
         carKeysManager.onSessionEnded()
 
@@ -2923,6 +2924,7 @@ class AapService : Service() {
         ProjectionAirplaneMode.onSessionEnded(this)
         TripLog.onSessionEnded(this, userExit = true)
         EarphoneDropGuard.stop()
+        DrivingVideoLock.stop()
         try {
             unregisterReceiver(nightModeUpdateReceiver)
             unregisterReceiver(sensorRefreshReceiver)

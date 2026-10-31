@@ -5,7 +5,6 @@ import android.content.Intent
 import android.media.AudioManager
 import com.andrerinas.openheadunit.aap.protocol.Channel
 import com.andrerinas.openheadunit.trip.TripLog
-import com.andrerinas.openheadunit.aap.protocol.messages.DrivingStatusEvent
 import com.andrerinas.openheadunit.aap.protocol.messages.LocationUpdateEvent
 import com.andrerinas.openheadunit.aap.protocol.messages.ServiceDiscoveryResponse
 import com.andrerinas.openheadunit.aap.protocol.proto.Common
@@ -524,7 +523,8 @@ internal class AapControlGateway(
         aapTransport.send(msg)
 
         if (channel == Channel.ID_SEN) {
-            aapTransport.send(DrivingStatusEvent(Sensors.SensorBatch.DrivingStatusData.Status.UNRESTRICTED))
+            // Parked to start with; video locks while the unit's GPS says the car is moving.
+            DrivingVideoLock.start(aapTransport.context, aapTransport)
         }
         return 0
     }
