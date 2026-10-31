@@ -32,6 +32,7 @@ object TripsDialog {
     private const val MUTED = 0xFF9EA7B0.toInt()
     private const val BATTERY = 0xFF66BB6A.toInt()
     private const val GAP = 0xFFE53935.toInt()
+    private const val HOT_MILLI_C = 45_000
 
     fun show(activity: Activity) {
         val spot = ParkingSpot.load(activity)
@@ -114,7 +115,19 @@ object TripsDialog {
         }
         body.addView(text(activity, "Link drops: " + trip.linkDrops, if (trip.linkDrops > 0) GAP else MUTED, 14f))
         mapUp(activity, trip)?.let { body.addView(text(activity, it, MUTED, 14f)) }
+        heat(trip)?.let { (line, hot) -> body.addView(text(activity, line, if (hot) GAP else MUTED, 14f)) }
         return card(activity, body)
+    }
+
+    /** "Hottest: CPU 52 °C · battery 38 °C", red from [HOT_MILLI_C]; null when nothing was read. */
+    private fun heat(trip: TripLog.Trip): Pair<String, Boolean>? {
+        val parts = listOfNotNull(
+            trip.cpuMaxMilliC.takeIf { it >= 0 }?.let { "CPU " + (it + 500) / 1000 + " °C" },
+            trip.batteryMaxMilliC.takeIf { it >= 0 }?.let { "battery " + (it + 500) / 1000 + " °C" }
+        )
+        if (parts.isEmpty()) return null
+        val hot = trip.cpuMaxMilliC >= HOT_MILLI_C || trip.batteryMaxMilliC >= HOT_MILLI_C
+        return "Hottest: " + parts.joinToString("  ·  ") to hot
     }
 
     private fun mapUp(context: Context, trip: TripLog.Trip): String? = when {

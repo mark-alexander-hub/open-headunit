@@ -7,8 +7,11 @@ import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.widget.Toast
 import com.andrerinas.openheadunit.App
+import com.andrerinas.openheadunit.R
 import com.andrerinas.openheadunit.utils.AppLog
+import com.andrerinas.openheadunit.utils.ToastUtils
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -38,6 +41,7 @@ object TripLog {
     private const val BATTERY_SAMPLE_MS = 5 * 60_000L
     /** A wait longer than this was the unit sitting idle, not a slow connection. */
     private const val MAX_CONNECT_WAIT_MS = 5 * 60_000L
+    private const val LOW_BATTERY_PERCENT = 25
 
     data class MusicGap(val startMs: Long, val durationMs: Long)
 
@@ -54,7 +58,10 @@ object TripLog {
         /** Woken or opened to the phone connected, or -1 when unknown. */
         val connectMs: Long = -1,
         /** Phone connected to the first frame of the map, or -1 when unknown. */
-        val videoMs: Long = -1
+        val videoMs: Long = -1,
+        /** Hottest CPU and battery during the trip in milli-degrees C, or -1 when unread. See [TripHeat]. */
+        val cpuMaxMilliC: Int = -1,
+        val batteryMaxMilliC: Int = -1
     ) {
         val durationMs: Long get() = endMs - startMs
 
@@ -77,6 +84,8 @@ object TripLog {
             })
             put("connectMs", connectMs)
             put("videoMs", videoMs)
+            put("cpuMax", cpuMaxMilliC)
+            put("batMax", batteryMaxMilliC)
         }
 
         companion object {
@@ -91,13 +100,15 @@ object TripLog {
                 }
                 return Trip(o.optLong("start"), o.optLong("end"), o.optInt("batStart", -1),
                     o.optInt("batEnd", -1), o.optInt("linkDrops"), gaps, battery,
-                    o.optLong("connectMs", -1), o.optLong("videoMs", -1))
+                    o.optLong("connectMs", -1), o.optLong("videoMs", -1),
+                    o.optInt("cpuMax", -1), o.optInt("batMax", -1))
             }
         }
     }
 
     private class Live(val startMs: Long, val batteryStart: Int, val linkDrops: Int, gaps: List<MusicGap>,
-                       battery: List<BatterySample>, var connectMs: Long, var videoMs: Long) {
+                       battery: List<BatterySample>, var connectMs: Long, var videoMs: Long,
+                       val cpuMaxSoFar: Int = -1, val batteryMaxSoFar: Int = -1) {
         val gaps = gaps.toMutableList()
         val battery = battery.toMutableList()
         var musicPlaying = false
@@ -154,10 +165,11 @@ object TripLog {
             AppLog.i("TripLog: session back within ${(now - last.endMs) / 1000}s, continuing the trip")
             // The first connect of the trip is the one worth timing, not a reconnect.
             Live(last.startMs, last.batteryStart, last.linkDrops + 1, last.gaps, last.battery,
-                last.connectMs, last.videoMs).also { it.resumed = true }
+                last.connectMs, last.videoMs, last.cpuMaxMilliC, last.batteryMaxMilliC).also { it.resumed = true }
         } else {
             val waited = SystemClock.elapsedRealtime() - waitingSince
             val battery = batteryPercent(app)
+            if (battery in 0 until LOW_BATTERY_PERCENT && !isCharging(app)) warnLowBattery(app, battery)
             Live(now, battery, 0, emptyList(),
                 if (battery >= 0) listOf(BatterySample(now, battery)) else emptyList(),
                 if (waited in 0..MAX_CONNECT_WAIT_MS) waited else -1L, -1L
@@ -166,6 +178,27 @@ object TripLog {
         handler.removeCallbacksAndMessages(null)
         scheduleBatterySample(app)
         ParkingSpot.startTracking(app)
+        live?.let { TripHeat.start(app, it.cpuMaxSoFar, it.batteryMaxSoFar) }
+    }
+
+    /**
+     * Once, at the start of a new trip (not a reconnect): at ~15 %/h while projecting, a unit below
+     * this will not see a long drive through. A toast, so it shows over the map and then goes.
+     */
+    private fun warnLowBattery(context: Context, percent: Int) {
+        AppLog.i("TripLog: battery $percent % at the start of the trip, warning")
+        // Not [handler]: the session start clears that one's queue straight after this call.
+        Handler(Looper.getMainLooper()).post {
+            ToastUtils.showToast(context, context.getString(R.string.trips_low_battery, percent),
+                Toast.LENGTH_LONG, force = true)
+        }
+    }
+
+    private fun isCharging(context: Context): Boolean = try {
+        val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        (intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+    } catch (e: Exception) {
+        false
     }
 
     /** The phone started or stopped the media stream. Called from the transport thread. */
@@ -195,6 +228,7 @@ object TripLog {
         TripSleep.onSessionEnded(context, userExit)
         val trip = live ?: return
         live = null
+        TripHeat.stop()
         val now = System.currentTimeMillis()
         if (now - trip.startMs < MIN_TRIP_MS) {
             ParkingSpot.stopTracking(context)
@@ -204,7 +238,7 @@ object TripLog {
         if (batteryEnd >= 0) trip.battery.add(BatterySample(now, batteryEnd))
         // A stop still open at the end is the music ending with the trip, not a drop.
         val record = Trip(trip.startMs, now, trip.batteryStart, batteryEnd, trip.linkDrops, trip.gaps,
-            trip.battery, trip.connectMs, trip.videoMs)
+            trip.battery, trip.connectMs, trip.videoMs, TripHeat.cpuMax, TripHeat.batteryMax)
         val saved = load(context).let { if (trip.resumed) it.drop(1) else it }
         save(context, (listOf(record) + saved).take(MAX_TRIPS))
         AppLog.i("TripLog: trip saved, ${record.durationMs / 60_000} min, ${record.gaps.size} music gaps, ${record.linkDrops} link drops")
