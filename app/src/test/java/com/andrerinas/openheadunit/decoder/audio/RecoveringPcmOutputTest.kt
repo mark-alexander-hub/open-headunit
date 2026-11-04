@@ -305,4 +305,41 @@ class RecoveringPcmOutputTest {
         assertEquals(1, first.closes)
         assertTrue(output.isParked)
     }
+
+    @Test fun `a longer retry ladder outlasts a car radio restart that the default one gives up on`() {
+        // The Ford stereo reboots after an engine stop: Bluetooth is away ~27 s and every
+        // reopen fails until it is back. The music must return on its own afterwards.
+        val longLadder = longArrayOf(1000L, 2000L, 5000L, 10_000L, 20_000L, 30_000L)
+        for ((ladder, expectRecovery) in listOf(longLadder to true, RecoveringPcmOutput.DEFAULT_RETRY_DELAYS_MS to false)) {
+            var now = 0L
+            var opens = 0
+            var radioBack = false
+            val device = Device()
+            val output = RecoveringPcmOutput(null, { opens++; if (radioBack) device else error("no route") },
+                { now }, {}, ladder)
+            val pcm = ShortArray(960)
+            while (now < 27_000) {
+                output.write(pcm, 0, pcm.size)
+                now += 250
+            }
+            radioBack = true
+            assertEquals("still parked the moment the radio returns", -6, output.write(pcm, 0, pcm.size))
+            val before = opens
+            var recoveredAt = -1L
+            while (now < 90_000 && recoveredAt < 0) {
+                if (output.write(pcm, 0, pcm.size) == pcm.size) recoveredAt = now
+                now += 250
+            }
+            if (expectRecovery) {
+                assertTrue("ladder=${ladder.toList()} opens=$opens", opens > before)
+                assertTrue("recovered at $recoveredAt", recoveredAt in 27_000L..41_000L)
+                assertEquals(pcm.size, device.accepted.size)
+                assertFalse(output.isParked)
+            } else {
+                assertEquals("default ladder parks for good at ~10 s", before, opens)
+                assertEquals(-1L, recoveredAt)
+                assertTrue(output.isParked)
+            }
+        }
+    }
 }

@@ -6,8 +6,13 @@ internal class RecoveringPcmOutput(
     initial: PcmOutput?,
     private val reopen: () -> PcmOutput,
     private val nowMs: () -> Long,
-    private val report: (String) -> Unit
+    private val report: (String) -> Unit,
+    /** Pauses between automatic retry bursts; after the last one the output waits for a Start. */
+    private val retryDelaysMs: LongArray = DEFAULT_RETRY_DELAYS_MS
 ) : PcmOutput {
+    companion object {
+        val DEFAULT_RETRY_DELAYS_MS = longArrayOf(1000L, 2000L, 5000L)
+    }
     private var delegate: PcmOutput? = initial
     private var metadata = PcmOutputMetadata(initial)
     private val pending = PendingPcm()
@@ -147,13 +152,14 @@ internal class RecoveringPcmOutput(
 
     private fun parkForRetry() {
         // A route may recover without a phone-side Start. Bound each burst of reopen attempts,
-        // then allow three automatic bursts after 1s, 2s and 5s. A permanently broken route
-        // must not repeatedly interrupt the car radio by reacquiring focus forever. Retain
-        // pending PCM after that budget. Start permits another bounded attempt, while
-        // only ten seconds of continuous successful output renews automatic retries.
+        // then allow one automatic burst per entry of [retryDelaysMs] (1s, 2s and 5s by
+        // default). A permanently broken route must not repeatedly interrupt the car radio by
+        // reacquiring focus forever. Retain pending PCM after that budget. Start permits
+        // another bounded attempt, while only ten seconds of continuous successful output
+        // renews automatic retries.
         clearProgress()
-        val delayMs = when (cooldowns) { 0 -> 1000L; 1 -> 2000L; 2 -> 5000L; else -> null }
-        cooldowns = (cooldowns + 1).coerceAtMost(3)
+        val delayMs = retryDelaysMs.getOrNull(cooldowns)
+        cooldowns = (cooldowns + 1).coerceAtMost(retryDelaysMs.size)
         retryAtMs = if (delayMs == null) Long.MAX_VALUE else nowMs() + delayMs
         terminal = true
         report(if (delayMs == null) "$name automatic recovery exhausted; retaining PCM until Start"

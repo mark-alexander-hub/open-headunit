@@ -38,6 +38,11 @@ class AudioMixer(
         const val OUTPUT_CHANNELS = 2
         const val OUTPUT_BIT_DEPTH = 16
         private const val MIX_INTERVAL_MS = 10L
+        /** A car radio that reboots mid-drive (the Ford stereo after an engine stop) is away for
+         *  25-30 s, and the audio HAL stalls writes while Bluetooth tears down. The default 1/2/5 s
+         *  ladder parks the output at ~10 s and the music never comes back; keep trying for about
+         *  a minute instead. Bounded, so a truly dead route still stops. */
+        private val OUTPUT_RETRY_DELAYS_MS = longArrayOf(1000L, 2000L, 5000L, 10_000L, 20_000L, 30_000L)
         private const val SAMPLES_PER_CYCLE = (OUTPUT_SAMPLE_RATE * MIX_INTERVAL_MS / 1000).toInt()
         private const val SHORTS_PER_CYCLE = SAMPLES_PER_CYCLE * OUTPUT_CHANNELS
         private const val OUTPUT_WARMUP_MS = 1000L
@@ -83,9 +88,9 @@ class AudioMixer(
         if (!running.compareAndSet(false, true)) return
         try {
             val createOutput = { AudioOutputFactory.create(stream, attachHwDspEqualizer, preferAAudio) }
-            output = RecoveringPcmOutput(null, createOutput, SystemClock::elapsedRealtime) {
-                recordDiagnostic(SystemClock.elapsedRealtime(), it, warning = true)
-            }
+            output = RecoveringPcmOutput(null, createOutput, SystemClock::elapsedRealtime,
+                { recordDiagnostic(SystemClock.elapsedRealtime(), it, warning = true) },
+                OUTPUT_RETRY_DELAYS_MS)
             mixThread = Thread({
                 try { mixLoop() }
                 catch (_: InterruptedException) { Thread.currentThread().interrupt() }
