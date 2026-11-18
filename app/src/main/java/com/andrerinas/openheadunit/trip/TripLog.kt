@@ -134,8 +134,12 @@ object TripLog {
         var resumed = false
     }
 
+    /** A first stretch too short to save, kept so a link drop in it does not start a second trip. */
+    private class ShortStart(val trip: Live, val endedMs: Long, val cpuMax: Int, val batteryMax: Int)
+
     private val handler = Handler(Looper.getMainLooper())
     private var live: Live? = null
+    private var shortStart: ShortStart? = null
     private var sessionActive = false
     /** Elapsed-realtime of the app opening, the screen coming on or the last session ending. */
     @Volatile private var waitingSince = SystemClock.elapsedRealtime()
@@ -211,7 +215,14 @@ object TripLog {
         val now = System.currentTimeMillis()
         val trips = load(app)
         val last = trips.firstOrNull()
-        live = if (last != null && now - last.endMs in 0..RESUME_WINDOW_MS) {
+        val short = shortStart?.takeIf { now - it.endedMs in 0..RESUME_WINDOW_MS }
+        shortStart = null
+        live = if (short != null) {
+            AppLog.i("TripLog: session back within ${(now - short.endedMs) / 1000}s of a short start, continuing the trip")
+            Live(short.trip.startMs, short.trip.batteryStart, short.trip.linkDrops + 1, short.trip.gaps,
+                short.trip.battery, short.trip.connectMs, short.trip.videoMs, short.cpuMax, short.batteryMax,
+                short.trip.steps)
+        } else if (last != null && now - last.endMs in 0..RESUME_WINDOW_MS) {
             AppLog.i("TripLog: session back within ${(now - last.endMs) / 1000}s, continuing the trip")
             // The first connect of the trip is the one worth timing, not a reconnect.
             Live(last.startMs, last.batteryStart, last.linkDrops + 1, last.gaps, last.battery,
@@ -288,6 +299,9 @@ object TripLog {
         TripHeat.stop()
         val now = System.currentTimeMillis()
         if (now - trip.startMs < MIN_TRIP_MS) {
+            // Not saved, but not forgotten yet: if the session is back within the resume window
+            // this was a link drop at the start of a trip, not a trip of its own.
+            if (!userExit && !trip.resumed) shortStart = ShortStart(trip, now, TripHeat.cpuMax, TripHeat.batteryMax)
             ParkingSpot.stopTracking(context)
             return
         }

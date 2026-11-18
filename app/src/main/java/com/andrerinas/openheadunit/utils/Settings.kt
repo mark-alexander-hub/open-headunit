@@ -425,6 +425,24 @@ class Settings(private val context: Context) {
      * Put this unit in airplane mode for the length of a session, through root or local ADB. Off by
      * default: the unit's own SIM gets no calls or texts meanwhile. See [ProjectionAirplaneMode].
      */
+    /**
+     * Keep the session's sound playing when the screen goes dark. On a car unit a dark screen is
+     * the car switched off, and everything is paused; on a unit that is really a phone it is the
+     * rider saving battery between turns, who still wants the music and the directions.
+     */
+    var keepAudioWhenScreenOff: Boolean
+        get() = prefs.getBoolean("keep-audio-screen-off", true)
+        set(value) = prefs.edit().putBoolean("keep-audio-screen-off", value).apply()
+
+    /**
+     * Seconds between the GPS fixes kept during a trip for the parking spot; 0 keeps none and
+     * leaves the spot to the listen at the trip's end. A setting so its battery cost can be
+     * measured ride against ride. See [com.andrerinas.openheadunit.trip.ParkingSpot].
+     */
+    var parkingTrackSeconds: Int
+        get() = prefs.getInt("parking-track-seconds", 15)
+        set(value) = prefs.edit().putInt("parking-track-seconds", value).apply()
+
     var airplaneModeWhileProjecting: Boolean
         get() = prefs.getBoolean("airplane-mode-while-projecting", false)
         set(value) = prefs.edit().putBoolean("airplane-mode-while-projecting", value).apply()

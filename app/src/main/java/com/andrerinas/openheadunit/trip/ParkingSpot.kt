@@ -59,6 +59,12 @@ object ParkingSpot {
         handler.post {
             if (tracker != null) return@post
             if (!hasPermission(app)) return@post
+            val everySeconds = try { com.andrerinas.openheadunit.App.provide(app).settings.parkingTrackSeconds } catch (e: Exception) { 15 }
+            if (everySeconds <= 0) {
+                AppLog.i("ParkingSpot: trip tracking is off, the spot is left to the end of the trip")
+                return@post
+            }
+            val intervalMs = everySeconds.coerceIn(5, 600) * 1000L
             val lm = app.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return@post
             val t = object : LocationListener {
                 override fun onLocationChanged(location: Location) {
@@ -72,7 +78,7 @@ object ParkingSpot {
             }
             try {
                 if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                    lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, TRACK_INTERVAL_MS, 0f, t, Looper.getMainLooper())
+                    lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, intervalMs, 0f, t, Looper.getMainLooper())
                     tracker = t
                 }
             } catch (e: Exception) {

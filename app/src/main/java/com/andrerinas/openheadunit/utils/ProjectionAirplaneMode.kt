@@ -6,6 +6,10 @@ import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -31,16 +35,40 @@ object ProjectionAirplaneMode {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Mutex()
 
+    /** How long the radio stays off after a link drop, waiting for the session to come back. */
+    private const val RESUME_HOLD_MS = 45_000L
+
+    @Volatile private var pendingRestore: Job? = null
+
     fun onSessionStarted(context: Context) {
         val app = context.applicationContext
+        // A restore still waiting out a link drop: the session is back, the radio stays off.
+        pendingRestore?.cancel()
+        pendingRestore = null
         scope.launch { lock.withLock { enable(app) } }
     }
 
-    /** Also the recovery path on process start, after a session that never ended cleanly. */
-    fun onSessionEnded(context: Context) {
+    /**
+     * Also the recovery path on process start, after a session that never ended cleanly.
+     *
+     * @param holdForResume the link dropped rather than the session being ended. It usually comes
+     *   back within half a minute, and switching the modem on and straight off again for that is
+     *   the drain this exists to avoid. Only the wait can be cancelled, never the restore itself.
+     */
+    fun onSessionEnded(context: Context, holdForResume: Boolean = false) {
         val app = context.applicationContext
-        scope.launch { lock.withLock { restore(app) } }
+        pendingRestore?.cancel()
+        pendingRestore = scope.launch {
+            if (holdForResume && App.provide(app).settings.airplaneModeSetBySession) {
+                AppLog.i("ProjectionAirplaneMode: link dropped, keeping airplane mode ${RESUME_HOLD_MS / 1000}s for the session to return.")
+                delay(RESUME_HOLD_MS)
+            }
+            withContext(NonCancellable) { lock.withLock { restore(app) } }
+        }
     }
+
+    /** The user wants this unit's own data now, whatever a link drop is waiting for. */
+    fun restoreNow(context: Context) = onSessionEnded(context)
 
     private suspend fun enable(context: Context) {
         val settings = App.provide(context).settings

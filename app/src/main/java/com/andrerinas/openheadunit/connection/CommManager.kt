@@ -1389,6 +1389,11 @@ class CommManager(
         _transport?.pauseForSleep()
     }
 
+    /** The screen went dark under a live session that keeps its sound: only the picture stops. */
+    fun pauseVideoForDarkScreen() {
+        _transport?.pauseVideoForDarkScreen()
+    }
+
     fun updateAudioGains() {
         _transport?.aapAudio?.updateGains()
     }

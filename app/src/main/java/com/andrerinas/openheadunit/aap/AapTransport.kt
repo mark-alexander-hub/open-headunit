@@ -754,6 +754,11 @@ class AapTransport(
         videoDecoder.stop(DecoderStopPolicy.REASON_SCREEN_OFF_SLEEP)
     }
 
+    internal fun pauseVideoForDarkScreen() {
+        AppLog.i("AapTransport: screen dark - stopping the video decoder, sound and microphone carry on")
+        videoDecoder.stop(DecoderStopPolicy.REASON_SCREEN_OFF_SLEEP)
+    }
+
     internal fun stop(reason: Control.ByeByeReason = Control.ByeByeReason.USER_SELECTION) {
         if (closing) return
         AppLog.i("AapTransport stopping and sending byebye ($reason)")

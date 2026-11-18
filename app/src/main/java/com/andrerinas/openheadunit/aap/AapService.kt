@@ -657,7 +657,11 @@ class AapService : Service() {
                 Intent.ACTION_SCREEN_OFF -> {
                     screenOffTimestamp = SystemClock.elapsedRealtime()
                     AppLog.i("WakeDetect: SCREEN_OFF")
-                    commManager.pauseForSleep()
+                    if (commManager.isConnected && App.provide(this@AapService).settings.keepAudioWhenScreenOff) {
+                        commManager.pauseVideoForDarkScreen()
+                    } else {
+                        commManager.pauseForSleep()
+                    }
                     maybeInferredAccPowerLoss { goAsync() }
                 }
                 Intent.ACTION_SCREEN_ON -> {
@@ -1621,7 +1625,8 @@ class AapService : Service() {
         stopService(GpsLocationService.intent(this))
         nightModeManager?.stop()
         SessionWakeLock.onSessionEnded()
-        ProjectionAirplaneMode.onSessionEnded(this)
+        // Neither side ended it: a link that dropped mid-drive, which usually comes straight back.
+        ProjectionAirplaneMode.onSessionEnded(this, holdForResume = !state.isClean && !state.isUserExit)
         TripLog.onSessionEnded(this, userExit = state.isUserExit)
         EarphoneDropGuard.stop()
 
