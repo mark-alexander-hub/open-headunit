@@ -22,7 +22,7 @@ import com.andrerinas.openheadunit.utils.AppLog
  * A fix asked for only at the end often never comes: the GPS was off for the whole trip and
  * airplane mode left it no network assistance, so it starts cold, often parked under a roof. So
  * during the trip the GPS keeps a slow fix every [TRACK_INTERVAL_MS] and the end starts from the
- * newest of those; the end-of-trip listen only improves on it.
+ * newest of those, which is saved straight away; the end-of-trip listen only improves on it.
  */
 object ParkingSpot {
 
@@ -104,6 +104,12 @@ object ParkingSpot {
             val lm = app.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return@post
             // The newest trip fix, not the most accurate: an older sharper one is further back up the road.
             best = tracked ?: freshLastKnown(lm)
+            // Written at once: the app is often closed seconds after a trip, long before the
+            // listen below ends, and a spot held only in memory is lost with the process.
+            best?.let {
+                save(app, it)
+                AppLog.i("ParkingSpot: saved the trip's last fix, accuracy ${it.accuracy.toInt()} m")
+            }
             val l = object : LocationListener {
                 override fun onLocationChanged(location: Location) {
                     if (best == null || location.accuracy < best!!.accuracy) best = location
@@ -141,13 +147,17 @@ object ParkingSpot {
             AppLog.w("ParkingSpot: no fix when the trip ended, keeping the previous spot")
             return
         }
+        save(context, fix)
+        AppLog.i("ParkingSpot: saved, accuracy ${fix.accuracy.toInt()} m")
+    }
+
+    private fun save(context: Context, fix: Location) {
         prefs(context).edit()
             .putString(KEY_LAT, fix.latitude.toString())
             .putString(KEY_LON, fix.longitude.toString())
             .putFloat(KEY_ACC, fix.accuracy)
             .putLong(KEY_TIME, System.currentTimeMillis())
             .apply()
-        AppLog.i("ParkingSpot: saved, accuracy ${fix.accuracy.toInt()} m")
     }
 
     private fun hasPermission(context: Context) =
