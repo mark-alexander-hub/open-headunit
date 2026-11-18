@@ -179,7 +179,27 @@ object TripLog {
         val trip = live ?: return
         val percent = batteryPercent(context)
         if (percent >= 0) trip.battery.add(BatterySample(System.currentTimeMillis(), percent))
+        checkpoint(context, trip, percent)
         scheduleBatterySample(context)
+    }
+
+    /**
+     * Writes the trip so far. Until this, a trip existed only in memory until its session ended,
+     * so a battery that died on the road or a killed process left no trip and no parking spot.
+     * The record is the newest one and marked as such, so the end of the trip replaces it.
+     */
+    private fun checkpoint(context: Context, trip: Live, batteryNow: Int) {
+        try {
+            val record = Trip(trip.startMs, System.currentTimeMillis(), trip.batteryStart, batteryNow,
+                trip.linkDrops, trip.gaps.toList(), trip.battery.toList(), trip.connectMs, trip.videoMs,
+                TripHeat.cpuMax, TripHeat.batteryMax, trip.steps)
+            val saved = load(context).let { if (trip.resumed) it.drop(1) else it }
+            save(context, (listOf(record) + saved).take(MAX_TRIPS))
+            trip.resumed = true
+            ParkingSpot.checkpoint(context)
+        } catch (e: Exception) {
+            AppLog.w("TripLog: checkpoint failed: ${e.message}")
+        }
     }
 
     @Synchronized

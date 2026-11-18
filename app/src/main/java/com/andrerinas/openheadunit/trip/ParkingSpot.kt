@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import com.andrerinas.openheadunit.utils.AppLog
 
@@ -46,6 +47,10 @@ object ParkingSpot {
     private var best: Location? = null
     private var tracker: LocationListener? = null
     private var lastTracked: Location? = null
+    /** [best] is still the trip's last fix, taken rolling, rather than one from the stop itself. */
+    private var bestIsTripFix = false
+    private var timeout: Runnable? = null
+    private var captureLock: PowerManager.WakeLock? = null
 
     /** The trip started: keep a slow GPS fix going so its end has a recent one to start from. */
     @SuppressLint("MissingPermission")
@@ -82,6 +87,15 @@ object ParkingSpot {
         handler.post { releaseTracker(app); lastTracked = null }
     }
 
+    /**
+     * Mid-trip: write where the unit is now, so a trip cut short by a dead battery or a killed
+     * process still leaves a spot no older than the last checkpoint.
+     */
+    fun checkpoint(context: Context) {
+        val app = context.applicationContext
+        handler.post { lastTracked?.let { save(app, it) } }
+    }
+
     private fun releaseTracker(app: Context) {
         val t = tracker ?: return
         tracker = null
@@ -96,24 +110,37 @@ object ParkingSpot {
             releaseTracker(app)
             val tracked = lastTracked?.takeIf { System.currentTimeMillis() - it.time <= LAST_KNOWN_MAX_AGE_MS }
             lastTracked = null
-            if (listener != null) return@post // one capture at a time
             if (!hasPermission(app)) {
                 AppLog.w("ParkingSpot: no location permission, not saving where the trip ended")
                 return@post
             }
             val lm = app.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return@post
             // The newest trip fix, not the most accurate: an older sharper one is further back up the road.
-            best = tracked ?: freshLastKnown(lm)
+            val seed = tracked ?: freshLastKnown(lm)
             // Written at once: the app is often closed seconds after a trip, long before the
             // listen below ends, and a spot held only in memory is lost with the process.
-            best?.let {
+            seed?.let {
                 save(app, it)
                 AppLog.i("ParkingSpot: saved the trip's last fix, accuracy ${it.accuracy.toInt()} m")
             }
+            if (listener != null) {
+                // A listen from a session that ended moments ago is still running. It carries on,
+                // now refining this newer end rather than the older one.
+                if (seed != null) { best = seed; bestIsTripFix = true }
+                return@post
+            }
+            best = seed
+            bestIsTripFix = seed != null
             val l = object : LocationListener {
                 override fun onLocationChanged(location: Location) {
-                    if (best == null || location.accuracy < best!!.accuracy) best = location
-                    if (location.accuracy <= GOOD_ACCURACY_M) finish(app, lm)
+                    val good = location.accuracy <= GOOD_ACCURACY_M
+                    // A good fix from the stop itself beats the trip's last one however sharp that
+                    // was: it was taken up to a tracking interval earlier, still rolling.
+                    if (best == null || location.accuracy < best!!.accuracy || (bestIsTripFix && good)) {
+                        best = location
+                        bestIsTripFix = false
+                    }
+                    if (good) finish(app, lm)
                 }
                 @Deprecated("Deprecated in Java")
                 override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
@@ -132,14 +159,34 @@ object ParkingSpot {
                     AppLog.w("ParkingSpot: $provider unavailable: ${e.message}")
                 }
             }
-            if (!started) finish(app, lm) else handler.postDelayed({ finish(app, lm) }, MAX_WAIT_MS)
+            if (!started) {
+                finish(app, lm)
+                return@post
+            }
+            // The deadline below counts only time awake. Unheld, a unit that dozes with its screen
+            // off stops the clock and leaves the GPS request standing until it next wakes.
+            captureLock = try {
+                (app.getSystemService(Context.POWER_SERVICE) as? PowerManager)
+                    ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "OpenHeadunit::ParkingSpot")
+                    ?.apply { setReferenceCounted(false); acquire(MAX_WAIT_MS + 5_000L) }
+            } catch (e: Exception) {
+                null
+            }
+            val deadline = Runnable { finish(app, lm) }
+            timeout = deadline
+            handler.postDelayed(deadline, MAX_WAIT_MS)
         }
     }
 
     private fun finish(context: Context, lm: LocationManager) {
         val l = listener ?: return
         listener = null
-        handler.removeCallbacksAndMessages(null)
+        // Only the deadline: a capture or a tracking start queued behind this must still run.
+        timeout?.let { handler.removeCallbacks(it) }
+        timeout = null
+        try { captureLock?.takeIf { it.isHeld }?.release() } catch (_: Exception) {}
+        captureLock = null
+        bestIsTripFix = false
         try { lm.removeUpdates(l) } catch (_: Exception) {}
         val fix = best
         best = null
