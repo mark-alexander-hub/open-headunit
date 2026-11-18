@@ -50,6 +50,10 @@ class AutoStartReceiver : BroadcastReceiver() {
             AppLog.i("BT Device connected: ${device?.name} (${device?.address})")
 
             if (device != null && targetMacs.contains(device.address)) {
+                if (com.andrerinas.openheadunit.trip.ParkedMode.holdsAutoStart(context)) {
+                    AppLog.i("AutoStartReceiver: a Parked app is on the screen, so Android Auto is left asleep. Opening the head unit starts it.")
+                    return
+                }
                 AppLog.i("MATCH! Starting AapService via Bluetooth Auto-start...")
 
                 // Start the service to make the app alive. Explicit action so onStartCommand

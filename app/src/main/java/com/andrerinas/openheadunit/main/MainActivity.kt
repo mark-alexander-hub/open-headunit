@@ -1174,6 +1174,7 @@ class MainActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
+        com.andrerinas.openheadunit.trip.ParkedMode.leave(this, "the head unit is on the screen again")
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
         window.peekDecorView()?.let { v ->
             imm?.hideSoftInputFromWindow(v.windowToken, 0)

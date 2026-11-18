@@ -40,8 +40,32 @@ internal object EarphoneBoost {
 
     fun isEarphoneType(type: Int): Boolean = type in EARPHONE_TYPES
 
+    /** A Bluetooth speaker or car radio is connected for media, which is where the sound then goes. */
+    fun bluetoothMediaConnected(audioManager: AudioManager): Boolean {
+        if (Build.VERSION.SDK_INT < 23) {
+            @Suppress("DEPRECATION")
+            return audioManager.isBluetoothA2dpOn
+        }
+        return try {
+            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                .any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Plugged in and actually playing: with a Bluetooth media device connected the sound goes
+     * there, and earphones left in the socket carry nothing.
+     */
+    fun earphonesCarrySound(audioManager: AudioManager): Boolean =
+        earphonesCarrySound(earphonesConnected(audioManager), bluetoothMediaConnected(audioManager))
+
+    fun earphonesCarrySound(earphonesIn: Boolean, bluetoothMedia: Boolean): Boolean =
+        earphonesIn && !bluetoothMedia
+
     fun apply(gain: Float, enabled: Boolean, audioManager: AudioManager): Float =
-        if (enabled && earphonesConnected(audioManager)) (gain * FACTOR).coerceAtMost(MAX_GAIN) else gain
+        if (enabled && earphonesCarrySound(audioManager)) (gain * FACTOR).coerceAtMost(MAX_GAIN) else gain
 
     /** Calls [onChange] on the main thread whenever an output is plugged in or out. */
     fun watch(audioManager: AudioManager, onChange: () -> Unit): Any? {

@@ -55,6 +55,10 @@ internal object EarphoneDropGuard {
                 if (removedDevices.none(::isEarphone)) return
                 handler.removeCallbacksAndMessages(null)
                 if (EarphoneBoost.earphonesConnected(am)) return // another pair is still in
+                if (EarphoneBoost.bluetoothMediaConnected(am)) {
+                    AppLog.i("EarphoneDropGuard: earphones gone, but the sound is on Bluetooth - leaving the music alone")
+                    return
+                }
                 if (pausedAt < 0 && musicPlaying) {
                     AppLog.i("EarphoneDropGuard: earphones gone while playing, pausing the phone")
                     press(KeyEvent.KEYCODE_MEDIA_PAUSE)

@@ -15,7 +15,10 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import com.andrerinas.openheadunit.R
+import com.andrerinas.openheadunit.aap.AapService
+import com.andrerinas.openheadunit.utils.ProjectionAirplaneMode
 import com.andrerinas.openheadunit.utils.AppLog
 import com.andrerinas.openheadunit.utils.ToastUtils
 import com.google.android.material.card.MaterialCardView
@@ -57,6 +60,8 @@ object ParkedDialog {
         }
         // Opening this is the user using the unit, not a unit left behind after a trip.
         TripSleep.cancel()
+        // A stream needs the unit's own data, which a session's airplane mode may still be holding.
+        ProjectionAirplaneMode.restoreNow(activity)
         val apps = installed(activity)
 
         val column = LinearLayout(activity).apply {
@@ -77,10 +82,15 @@ object ParkedDialog {
             apps.forEach { app ->
                 row.addView(tile(activity, app) {
                     try {
+                        // Before the app opens: the head unit woke the phone when it was opened,
+                        // and the session that follows would cover the video a second later.
+                        ParkedMode.enter(activity)
                         activity.startActivity(app.launch)
                         AppLog.i("ParkedDialog: opened ${app.label}")
                         dialog.dismiss()
+                        standDown(activity)
                     } catch (e: Exception) {
+                        ParkedMode.leave(activity, "the app did not open")
                         AppLog.w("ParkedDialog: could not open ${app.label}: ${e.message}")
                         ToastUtils.showToast(activity, R.string.parked_failed, Toast.LENGTH_LONG, force = true)
                     }
@@ -95,6 +105,17 @@ object ParkedDialog {
             setPadding(0, activity.dp(10), 0, 0)
         })
         dialog.show()
+    }
+
+    /** Stops the head unit the way its Exit button does, so nothing is left listening for the phone. */
+    private fun standDown(activity: Activity) {
+        try {
+            ContextCompat.startForegroundService(
+                activity, Intent(activity, AapService::class.java).setAction(AapService.ACTION_STOP_SERVICE)
+            )
+        } catch (e: Exception) {
+            AppLog.w("ParkedDialog: could not stop the head unit: ${e.message}")
+        }
     }
 
     private fun installed(context: Context): List<App> {
