@@ -20,7 +20,25 @@ object EarlyWakePolicy {
         credentialsPresent: Boolean,
         userExited: Boolean,
         sessionUp: Boolean,
-    ): Boolean = listenersOpen && !credentialsPresent && !userExited && !sessionUp
+        phoneHoldsEndpoint: Boolean = false,
+    ): Boolean = listenersOpen && !credentialsPresent && !userExited && !sessionUp && !phoneHoldsEndpoint
+
+    /** The wait for credentials before an ordinary wake, which then goes ahead without them. */
+    const val CREDENTIAL_WAIT_MS = 4_000
+
+    /** Long enough for a group that needed a WiFi restart first; measured at 5 to 8 s. */
+    const val CREDENTIAL_WAIT_WITH_ENDPOINT_MS = 20_000
+
+    /**
+     * How long a wake waits for the network to exist.
+     *
+     * A phone that was handed this unit's endpoint does not wait to be told the network over
+     * Bluetooth: the wake alone sends it looking for the network it stored. Woken a moment before
+     * the group was on the air it found nothing, and came back 20 s later. So for that phone the
+     * head start is not worth having, and the wake waits for the group.
+     */
+    fun credentialWaitMs(phoneHoldsEndpoint: Boolean): Int =
+        if (phoneHoldsEndpoint) CREDENTIAL_WAIT_WITH_ENDPOINT_MS else CREDENTIAL_WAIT_MS
 
     /**
      * Whether a `triggerPoke()` with a new credential key should replace the running loop.

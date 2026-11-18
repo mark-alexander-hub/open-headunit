@@ -1,5 +1,6 @@
 package com.andrerinas.openheadunit.connection.wifi.modes.nativeaa
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -111,5 +112,13 @@ class EarlyWakePolicyTest {
         assertTrue(EarlyWakePolicy.isEmptyKey(none))
         assertFalse(EarlyWakePolicy.isEmptyKey(real))
         assertFalse(EarlyWakePolicy.isEmptyKey(Triple("DIRECT-ab", "", "")))
+    }
+
+    @Test
+    fun `a phone that holds this unit's endpoint is not woken before the network exists`() {
+        assertTrue(EarlyWakePolicy.mayWakeBeforeCredentials(true, false, false, false))
+        assertFalse(EarlyWakePolicy.mayWakeBeforeCredentials(true, false, false, false, phoneHoldsEndpoint = true))
+        assertEquals(4_000, EarlyWakePolicy.credentialWaitMs(false))
+        assertEquals(20_000, EarlyWakePolicy.credentialWaitMs(true))
     }
 }

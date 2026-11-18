@@ -2131,6 +2131,7 @@ class NativeAaHandshakeManager(
                 credentialsPresent = credentials != null,
                 userExited = userExited,
                 sessionUp = commManager.isConnected,
+                phoneHoldsEndpoint = phoneHoldsEndpoint(),
             )
         ) return
         AppLog.i("NativeAA: waking the phone while the WiFi group is still forming.")
@@ -2386,7 +2387,8 @@ class NativeAaHandshakeManager(
                         AppLog.i("NativeAA: WiFi credentials not ready before poke. Requesting WiFi refresh...")
                         launcher.triggerWifiDirectRefresh()
                         var waitedMs = 0
-                        while (credentials == null && waitedMs < 4000 && isActive() && isActive) {
+                        val waitLimitMs = EarlyWakePolicy.credentialWaitMs(phoneHoldsEndpoint())
+                        while (credentials == null && waitedMs < waitLimitMs && isActive() && isActive) {
                             delay(200)
                             waitedMs += 200
                         }
@@ -2542,7 +2544,8 @@ class NativeAaHandshakeManager(
                         AppLog.i("NativeAA: WiFi credentials not ready before manual poke. Requesting WiFi refresh...")
                         launcher.triggerWifiDirectRefresh()
                         var waitedMs = 0
-                        while (credentials == null && waitedMs < 4000 && isActive() && isActive) {
+                        val waitLimitMs = EarlyWakePolicy.credentialWaitMs(phoneHoldsEndpoint())
+                        while (credentials == null && waitedMs < waitLimitMs && isActive() && isActive) {
                             delay(200)
                             waitedMs += 200
                         }
@@ -3663,6 +3666,10 @@ class NativeAaHandshakeManager(
         val request = WppMessages.versionRequest(carInfo(), endpoint, channelType, channels)
         sendProtobuf(output, request.toByteArray(), WppMessageType.VERSION_REQUEST)
     }
+
+    /** A phone was handed the endpoint of the WiFi Direct network, and joins it straight from a wake. */
+    private fun phoneHoldsEndpoint(): Boolean =
+        launcher.strategy == NativeStrategy.WIFI_DIRECT && settings.wifiDirectAdvertisedIdentity != null
 
     /** Remembers the network an endpoint went out under, which is the one the phone will insist on. */
     private fun recordAdvertisedEndpoint(transport: NativeStrategy) {
