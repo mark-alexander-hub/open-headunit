@@ -656,6 +656,21 @@ class Settings(private val context: Context) {
         }
 
     /**
+     * The build fingerprint on which this unit refused a named Native AA group outright and then
+     * hosted the platform's own profile, or null. While it matches the running build the name is
+     * not asked for, and the profile the platform keeps is treated as the identity that repeats.
+     * See [com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.EndpointRetirementPolicy.appNamesGroup].
+     */
+    var wifiDirectNamedRefusedOn: String?
+        get() = prefs.getString(KEY_WIFI_DIRECT_NAMED_REFUSED_ON, null)
+        set(value) {
+            val editor = prefs.edit()
+            if (value.isNullOrEmpty()) editor.remove(KEY_WIFI_DIRECT_NAMED_REFUSED_ON)
+            else editor.putString(KEY_WIFI_DIRECT_NAMED_REFUSED_ON, value)
+            editor.apply()
+        }
+
+    /**
      * Which 5 GHz channel to ask for, on whichever transport is hosting the network.
      * 0 = automatic, otherwise the channel number: 36, 40, 44 or 48 (UNII-1), or 149 (UNII-3).
      *
@@ -1861,6 +1876,7 @@ class Settings(private val context: Context) {
         const val KEY_NAVIGATION_VOLUME_OFFSET = "navigation-volume-offset"
         const val KEY_ENABLE_CAR_LAUNCHER = "enable-car-launcher"
         const val KEY_WIFI_DIRECT_BANDED_REFUSED_ON = "wifi-direct-banded-refused-on"
+        const val KEY_WIFI_DIRECT_NAMED_REFUSED_ON = "wifi-direct-named-refused-on"
 
         const val AUTO_CONNECT_LAST_SESSION = "last-session"
         const val AUTO_CONNECT_SELF_MODE = "self-mode"

@@ -3686,7 +3686,10 @@ class NativeAaHandshakeManager(
         return advertised.takeIf {
             EndpointRetirementPolicy.isRetiring(
                 advertised, settings.wifiDirectStableIdentity, settings.wifiDirectGroupIdentity,
-                Build.VERSION.SDK_INT >= P2pIdentityRotationPolicy.NAMED_CREATE_SDK,
+                EndpointRetirementPolicy.appNamesGroup(
+                    Build.VERSION.SDK_INT >= P2pIdentityRotationPolicy.NAMED_CREATE_SDK,
+                    settings.wifiDirectNamedRefusedOn, Build.FINGERPRINT,
+                ),
                 settings.wifiDirectRotationPending, creds.ssid, creds.psk,
             )
         }

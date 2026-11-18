@@ -116,6 +116,28 @@ class EndpointRetirementPolicyTest {
     }
 
     @Test
+    fun `a unit that refuses named groups on this build does not name its group`() {
+        val build = "vendor/unit/unit:10/QQ3A/1:userdebug/test-keys"
+        assertTrue(EndpointRetirementPolicy.appNamesGroup(true, null, build))
+        assertFalse(EndpointRetirementPolicy.appNamesGroup(true, build, build))
+        // A refusal measured on another firmware says nothing about this one.
+        assertTrue(EndpointRetirementPolicy.appNamesGroup(true, "vendor/unit/unit:9/PQ/1:user/release-keys", build))
+        assertFalse(EndpointRetirementPolicy.appNamesGroup(false, null, build))
+    }
+
+    @Test
+    fun `the platform's profile on a name-refusing unit is not retired every bring-up`() {
+        // The kept pair never reaches the air there, so it can never equal the advertised one.
+        val build = "vendor/unit/unit:10/QQ3A/1:userdebug/test-keys"
+        val frameworkProfile = StoredP2pIdentity("DIRECT-OP-Android_d973", "abcDEF123456")
+        val neverOnAir = StoredP2pIdentity("DIRECT-MR-LenovoK9", "zzzZZZ999999")
+        assertTrue(owed(advertised = frameworkProfile, kept = neverOnAir, appNamesGroup = true))
+        val names = EndpointRetirementPolicy.appNamesGroup(true, build, build)
+        assertFalse(owed(advertised = frameworkProfile, kept = neverOnAir, appNamesGroup = names))
+        assertTrue(owed(advertised = frameworkProfile, kept = neverOnAir, appNamesGroup = names, rotationPending = true))
+    }
+
+    @Test
     fun `a pair no create could ask for again is not recorded`() {
         assertNull(EndpointRetirementPolicy.recordsAdvertisement(NativeStrategy.WIFI_DIRECT, "HomeWifi", "abcDEF123456"))
         assertNull(EndpointRetirementPolicy.recordsAdvertisement(NativeStrategy.WIFI_DIRECT, advertised.networkName, "short"))

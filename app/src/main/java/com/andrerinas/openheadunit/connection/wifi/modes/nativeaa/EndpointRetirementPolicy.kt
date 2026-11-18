@@ -13,6 +13,20 @@ import com.andrerinas.openheadunit.connection.wifi.direct.StoredP2pIdentity
 object EndpointRetirementPolicy {
 
     /**
+     * Whether a name this app asks for can reach the air on this unit.
+     *
+     * The platform offering the API is not the unit honouring it: some firmware refuses every named
+     * create and hosts only its own stored profile. There the kept pair never goes on the air, so
+     * comparing it with the advertised one reads every bring-up as a rename, and the phone's dial
+     * to a network that has not moved is rejected every second connection. Such a unit is judged
+     * like one that cannot name a group at all.
+     *
+     * @param namedRefusedOn the build fingerprint the refusal was measured on, or null.
+     */
+    fun appNamesGroup(platformNamesGroups: Boolean, namedRefusedOn: String?, runningBuild: String): Boolean =
+        platformNamesGroups && !(namedRefusedOn != null && namedRefusedOn == runningBuild)
+
+    /**
      * Whether the next create owes the advertised network a retirement.
      *
      * Where the app names the group, anything but the kept pair is a move. Below API 29 the platform

@@ -2661,7 +2661,7 @@ class WifiDirectManager(private val context: Context) : WifiP2pManager.Connectio
         val s = App.provide(context).settings
         return EndpointRetirementPolicy.owed(
             s.wifiDirectAdvertisedIdentity, s.wifiDirectStableIdentity, s.wifiDirectGroupIdentity,
-            Build.VERSION.SDK_INT >= P2pIdentityRotationPolicy.NAMED_CREATE_SDK, s.wifiDirectRotationPending,
+            appNamesNativeGroup(), s.wifiDirectRotationPending,
         )
     }
 
@@ -2669,10 +2669,16 @@ class WifiDirectManager(private val context: Context) : WifiP2pManager.Connectio
         val s = App.provide(context).settings
         return EndpointRetirementPolicy.isRetiring(
             s.wifiDirectAdvertisedIdentity, s.wifiDirectStableIdentity, s.wifiDirectGroupIdentity,
-            Build.VERSION.SDK_INT >= P2pIdentityRotationPolicy.NAMED_CREATE_SDK, s.wifiDirectRotationPending,
+            appNamesNativeGroup(), s.wifiDirectRotationPending,
             ssid, psk,
         )
     }
+
+    /** False on a unit remembered to refuse every named create; see [EndpointRetirementPolicy.appNamesGroup]. */
+    private fun appNamesNativeGroup(): Boolean = EndpointRetirementPolicy.appNamesGroup(
+        Build.VERSION.SDK_INT >= P2pIdentityRotationPolicy.NAMED_CREATE_SDK,
+        App.provide(context).settings.wifiDirectNamedRefusedOn, Build.FINGERPRINT,
+    )
 
     private fun getP2pErrorString(reason: Int): String {
         return when(reason) {
@@ -2689,10 +2695,13 @@ class WifiDirectManager(private val context: Context) : WifiP2pManager.Connectio
      */
     private var namedFallbackRefused = false
 
+    /** A named create was refused outright this run; recorded once the platform's profile forms. */
+    private var namedRefusalPending = false
+
     @SuppressLint("MissingPermission")
     private fun standardCreateGroup(mgr: WifiP2pManager, ch: WifiP2pManager.Channel, retryCount: Int, groupMode: String) {
         markP2pRequest()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !namedFallbackRefused) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !namedFallbackRefused && appNamesNativeGroup()) {
             // "Standard" means no band request, not no name. The two-argument overload brings up
             // whatever profile the platform stored last, which on a unit with an older one is a
             // different network from the kept identity; measured as the join watchdog's fallback
@@ -2736,6 +2745,8 @@ class WifiDirectManager(private val context: Context) : WifiP2pManager.Connectio
                             })
                         } else {
                             namedFallbackRefused = true
+                            // BUSY is the stack still settling, not this unit declining to name a group.
+                            namedRefusalPending = reason != 2
                             AppLog.w(
                                 "WifiDirectManager: this unit refused a named group with no band " +
                                     "request ($reasonStr), so the platform's own profile is asked for instead."
@@ -2813,6 +2824,13 @@ class WifiDirectManager(private val context: Context) : WifiP2pManager.Connectio
                         App.provide(context).settings.wifiDirectBandedRefusedOn = null
                         AppLog.w("WifiDirectManager: the remembered no-band route failed too; forgetting it so the next bring-up asks for the band again.")
                     }
+                    if (App.provide(context).settings.wifiDirectNamedRefusedOn != null &&
+                        P2pCreateWedgePolicy.isRefusalHonest(reason, msSinceAcceptedCreate())) {
+                        // Same bargain as the band: the platform's profile was the fallback, and it failed.
+                        App.provide(context).settings.wifiDirectNamedRefusedOn = null
+                        AppLog.w("WifiDirectManager: the platform's own profile was refused too; forgetting that this unit refuses named groups, so the next bring-up asks for the name again.")
+                    }
+                    namedRefusalPending = false
                     bandedRefusalPending = false
                     isGroupCreatingOrCreated = false
                     releaseNativeCreateWindow("the unit refused the group")
@@ -2838,6 +2856,14 @@ class WifiDirectManager(private val context: Context) : WifiP2pManager.Connectio
             ConnectionIssues.clear(context, ConnectionIssue.FIVE_GHZ_CHANNEL_REFUSED)
         }
         nativeGroupCreationMode = groupMode
+        if (variant == P2pCreateWedgePolicy.Variant.FRAMEWORK_PROFILE && namedRefusalPending) {
+            App.provide(context).settings.wifiDirectNamedRefusedOn = Build.FINGERPRINT
+            AppLog.i(
+                "WifiDirectManager: recorded that this unit refuses named groups on this firmware and " +
+                    "hosts the platform's own profile; that profile is the identity kept from here on."
+            )
+        }
+        namedRefusalPending = false
         if (bandedRefusalPending && groupMode == NATIVE_GROUP_MODE_STANDARD_FALLBACK) {
             bandedRefusalPending = false
             App.provide(context).settings.wifiDirectBandedRefusedOn = Build.FINGERPRINT
