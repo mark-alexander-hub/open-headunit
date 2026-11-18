@@ -48,6 +48,7 @@ import com.andrerinas.openheadunit.main.MainActivity
 import com.andrerinas.openheadunit.R
 import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.zbt.ZbtDaemonReachability
 import com.andrerinas.openheadunit.utils.ProjectionAirplaneMode
+import com.andrerinas.openheadunit.utils.SessionWakeLock
 import com.andrerinas.openheadunit.trip.TripLog
 import com.andrerinas.openheadunit.utils.AppLog
 import com.andrerinas.openheadunit.utils.AppPermissions
@@ -1359,6 +1360,7 @@ class AapService : Service() {
         AppLog.i("AapService: Starting GpsLocationService and NightModeManager since connection is established")
         startService(GpsLocationService.intent(this))
         nightModeManager?.start()
+        SessionWakeLock.onSessionStarted(this)
         ProjectionAirplaneMode.onSessionStarted(this)
         TripLog.onSessionStarted(this)
         if (settings.earphoneDropGuard) {
@@ -1618,6 +1620,7 @@ class AapService : Service() {
         AppLog.i("AapService: Stopping GpsLocationService and NightModeManager since connection is disconnected")
         stopService(GpsLocationService.intent(this))
         nightModeManager?.stop()
+        SessionWakeLock.onSessionEnded()
         ProjectionAirplaneMode.onSessionEnded(this)
         TripLog.onSessionEnded(this, userExit = state.isUserExit)
         EarphoneDropGuard.stop()
@@ -2920,6 +2923,7 @@ class AapService : Service() {
         commManager.destroy()
         nightModeManager?.stop()
         stopService(GpsLocationService.intent(this))
+        SessionWakeLock.onSessionEnded()
         ProjectionAirplaneMode.onSessionEnded(this)
         TripLog.onSessionEnded(this, userExit = true)
         EarphoneDropGuard.stop()
