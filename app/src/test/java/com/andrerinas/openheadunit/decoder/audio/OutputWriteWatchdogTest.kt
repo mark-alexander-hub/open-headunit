@@ -42,6 +42,32 @@ class OutputWriteWatchdogTest {
         assertEquals(REOPEN, watchdog.onBlocked(10500))
     }
 
+    @Test fun `a fresh output is given the wake grace before a block counts as a stall`() {
+        val watchdog = OutputWriteWatchdog(wakeGraceMs = 2500)
+        assertEquals(WAIT, watchdog.onBlocked(0))
+        assertEquals(WAIT, watchdog.onBlocked(2499))
+        assertEquals(REOPEN, watchdog.onBlocked(2500))
+    }
+
+    @Test fun `a running output keeps the short limit whatever the wake grace`() {
+        val watchdog = OutputWriteWatchdog(wakeGraceMs = 2500)
+        watchdog.onProgress(0, 10_000)
+        assertEquals(WAIT, watchdog.onBlocked(10_020))
+        assertEquals(WAIT, watchdog.onBlocked(10_519))
+        assertEquals(REOPEN, watchdog.onBlocked(10_520))
+    }
+
+    @Test fun `an output idle past the sink's suspend delay wakes with the grace again`() {
+        val watchdog = OutputWriteWatchdog(wakeGraceMs = 2500)
+        watchdog.onProgress(0, 10_000)
+        // A prompt four seconds later; the car radio took 1.4 s to restart its stream.
+        assertEquals(WAIT, watchdog.onBlocked(14_000))
+        assertEquals(WAIT, watchdog.onBlocked(15_400))
+        watchdog.onProgress(0, 15_400)
+        assertEquals(WAIT, watchdog.onBlocked(15_420))
+        assertEquals(REOPEN, watchdog.onBlocked(15_920))
+    }
+
     @Test fun `recovery retries only the unwritten tail of a partially accepted cycle`() {
         val watchdog = OutputWriteWatchdog()
         var now = 0L

@@ -43,6 +43,10 @@ class AudioMixer(
          *  ladder parks the output at ~10 s and the music never comes back; keep trying for about
          *  a minute instead. Bounded, so a truly dead route still stops. */
         private val OUTPUT_RETRY_DELAYS_MS = longArrayOf(1000L, 2000L, 5000L, 10_000L, 20_000L, 30_000L)
+        /** K9: a suspended Bluetooth stream to the car radio took 0.8-1.4 s to restart for a
+         *  prompt, and the 500 ms stall limit reopened the output under it, which delayed or cut
+         *  the prompt's start. A fresh or idle output is given this long to accept its first write. */
+        private const val OUTPUT_WAKE_GRACE_MS = 2500L
         private const val SAMPLES_PER_CYCLE = (OUTPUT_SAMPLE_RATE * MIX_INTERVAL_MS / 1000).toInt()
         private const val SHORTS_PER_CYCLE = SAMPLES_PER_CYCLE * OUTPUT_CHANNELS
         private const val OUTPUT_WARMUP_MS = 1000L
@@ -90,7 +94,7 @@ class AudioMixer(
             val createOutput = { AudioOutputFactory.create(stream, attachHwDspEqualizer, preferAAudio) }
             output = RecoveringPcmOutput(null, createOutput, SystemClock::elapsedRealtime,
                 { recordDiagnostic(SystemClock.elapsedRealtime(), it, warning = true) },
-                OUTPUT_RETRY_DELAYS_MS)
+                OUTPUT_RETRY_DELAYS_MS, OUTPUT_WAKE_GRACE_MS)
             mixThread = Thread({
                 try { mixLoop() }
                 catch (_: InterruptedException) { Thread.currentThread().interrupt() }

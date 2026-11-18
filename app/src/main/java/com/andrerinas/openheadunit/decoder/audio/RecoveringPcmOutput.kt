@@ -8,7 +8,9 @@ internal class RecoveringPcmOutput(
     private val nowMs: () -> Long,
     private val report: (String) -> Unit,
     /** Pauses between automatic retry bursts; after the last one the output waits for a Start. */
-    private val retryDelaysMs: LongArray = DEFAULT_RETRY_DELAYS_MS
+    private val retryDelaysMs: LongArray = DEFAULT_RETRY_DELAYS_MS,
+    /** See [OutputWriteWatchdog]: the block a fresh or idle output is allowed before a reopen. */
+    private val wakeGraceMs: Long = OutputWriteWatchdog.STALL_MS
 ) : PcmOutput {
     companion object {
         val DEFAULT_RETRY_DELAYS_MS = longArrayOf(1000L, 2000L, 5000L)
@@ -16,7 +18,7 @@ internal class RecoveringPcmOutput(
     private var delegate: PcmOutput? = initial
     private var metadata = PcmOutputMetadata(initial)
     private val pending = PendingPcm()
-    private var watchdog = OutputWriteWatchdog()
+    private var watchdog = OutputWriteWatchdog(wakeGraceMs = wakeGraceMs)
     private val playbackVersion = java.util.concurrent.atomic.AtomicLong()
     @Volatile private var attemptedVersion = 0L
     private var started = false
@@ -80,7 +82,7 @@ internal class RecoveringPcmOutput(
         if (terminal) {
             if (isParked) return -6
             terminal = false
-            watchdog = OutputWriteWatchdog()
+            watchdog = OutputWriteWatchdog(wakeGraceMs = wakeGraceMs)
             retryAtMs = 0
         }
         val live = delegate ?: return if (nowMs() < retryAtMs) 0 else reopenOutput()
@@ -101,13 +103,13 @@ internal class RecoveringPcmOutput(
             // Positive writes clear the stall timer immediately. Only sustained output
             // renews reopen attempts and cooldowns; a one-second success/failure loop must
             // not keep reacquiring focus and interrupting the car radio indefinitely.
-            watchdog.onProgress(0)
+            watchdog.onProgress(0, nowMs())
             noteProgress(progress)
             if (result >= 0) return if (prefix) 0 else result
         }
         if (result == -2) return result // caller contract error
         val action = if (result < 0) watchdog.onFailure() else watchdog.onBlocked(nowMs())
-        return recover(if (result < 0) "write: $result" else "500ms write stall", action)
+        return recover(if (result < 0) "write: $result" else "write stall", action)
     }
 
     private fun recover(reason: String, action: OutputWriteWatchdog.Action): Int {
@@ -145,7 +147,8 @@ internal class RecoveringPcmOutput(
         stableSamples = (stableSamples + samples).coerceAtMost(48000L * 2 * 10)
         if (stableSamples >= 48000L * 2 * 10 && now - stableSinceMs >= 10_000) {
             cooldowns = 0
-            watchdog = OutputWriteWatchdog()
+            // Renewed mid-stream: it is running, so it gets the short limit, not the wake grace.
+            watchdog = OutputWriteWatchdog(wakeGraceMs = wakeGraceMs).also { it.onProgress(0, now) }
             clearProgress()
         }
     }
