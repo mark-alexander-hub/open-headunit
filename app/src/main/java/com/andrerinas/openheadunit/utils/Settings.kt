@@ -435,6 +435,15 @@ class Settings(private val context: Context) {
         set(value) = prefs.edit().putBoolean("keep-audio-screen-off", value).apply()
 
     /**
+     * Show the projection over this unit's lock screen while a session is live, so waking a dark
+     * screen brings the map back without unlocking. Anyone who wakes the unit then sees what the
+     * connected phone projects; the phone has to be in range for there to be a session at all.
+     */
+    var projectionOverLockScreen: Boolean
+        get() = prefs.getBoolean("projection-over-lock-screen", true)
+        set(value) = prefs.edit().putBoolean("projection-over-lock-screen", value).apply()
+
+    /**
      * Seconds between the GPS fixes kept during a trip for the parking spot; 0 keeps none and
      * leaves the spot to the listen at the trip's end. A setting so its battery cost can be
      * measured ride against ride. See [com.andrerinas.openheadunit.trip.ParkingSpot].

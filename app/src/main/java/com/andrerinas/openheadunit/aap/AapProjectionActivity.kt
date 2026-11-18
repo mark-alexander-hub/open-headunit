@@ -1008,6 +1008,18 @@ class AapProjectionActivity : SurfaceActivity(), IProjectionView.Callbacks, Vide
         // before we lock it.
         applyOrientationSettings()
 
+        // A unit that is really a phone locks itself under a dark screen. Waking it mid-drive
+        // then showed the lock screen, and the map only after a fingerprint. The projection goes
+        // over the lock screen instead; leaving it lands on the lock screen as before.
+        if (settings.projectionOverLockScreen) {
+            try {
+                if (Build.VERSION.SDK_INT >= 27) setShowWhenLocked(true)
+                else @Suppress("DEPRECATION") window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
+            } catch (e: Exception) {
+                AppLog.w("AapProjectionActivity: could not show over the lock screen: ${e.message}")
+            }
+        }
+
         // In onCreate and not onStart: the whole point is to hear a call while the activity is
         // stopped behind the phone's call screen.
         registerAudioModeListener()
