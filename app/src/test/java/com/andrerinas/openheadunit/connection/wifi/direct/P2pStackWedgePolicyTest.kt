@@ -74,4 +74,13 @@ class P2pStackWedgePolicyTest {
         val oneExpired = listOf(now - 3_700_000, now - 2_000_000, now - 1_000_000)
         assertTrue(P2pStackWedgePolicy.mayAutoRestart(true, false, now, oneExpired))
     }
+
+    @Test
+    fun `a create that fails while the stack settles from our restart is not the unit refusing`() {
+        // The failure that forgot both lessons: restart asked at 0 s, create refused 3.7 s later.
+        assertFalse(P2pStackWedgePolicy.failureIsTheUnits(3_700, false, listOf(0L)))
+        assertFalse(P2pStackWedgePolicy.failureIsTheUnits(100, true, emptyList()))
+        assertTrue(P2pStackWedgePolicy.failureIsTheUnits(100, false, emptyList()))
+        assertTrue(P2pStackWedgePolicy.failureIsTheUnits(P2pStackWedgePolicy.SETTLE_AFTER_RESTART_MS, false, listOf(0L)))
+    }
 }

@@ -2818,13 +2818,20 @@ class WifiDirectManager(private val context: Context) : WifiP2pManager.Connectio
                                 "finishing a create of ours rather than refusing to host one. Waiting for it."
                         )
                     }
-                    if (groupMode == NATIVE_GROUP_MODE_STANDARD_REMEMBERED) {
+                    val unitsOwnFailure = P2pStackWedgePolicy.failureIsTheUnits(
+                        System.currentTimeMillis(), wifiRestartInFlight, // the clock the restart times are kept on
+                        synchronized(wedgeLock) { wifiRestartTimes.toList() },
+                    )
+                    if (!unitsOwnFailure) {
+                        AppLog.i("WifiDirectManager: this failure came just after a WiFi restart of ours, so what this unit was learned to refuse is kept.")
+                    }
+                    if (groupMode == NATIVE_GROUP_MODE_STANDARD_REMEMBERED && unitsOwnFailure) {
                         // The shortcut is only worth keeping while it works. Forgetting it puts the
                         // banded ladder back in front of the next bring-up.
                         App.provide(context).settings.wifiDirectBandedRefusedOn = null
                         AppLog.w("WifiDirectManager: the remembered no-band route failed too; forgetting it so the next bring-up asks for the band again.")
                     }
-                    if (App.provide(context).settings.wifiDirectNamedRefusedOn != null &&
+                    if (App.provide(context).settings.wifiDirectNamedRefusedOn != null && unitsOwnFailure &&
                         P2pCreateWedgePolicy.isRefusalHonest(reason, msSinceAcceptedCreate())) {
                         // Same bargain as the band: the platform's profile was the fallback, and it failed.
                         App.provide(context).settings.wifiDirectNamedRefusedOn = null

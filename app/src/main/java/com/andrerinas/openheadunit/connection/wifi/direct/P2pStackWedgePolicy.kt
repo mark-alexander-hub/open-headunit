@@ -76,4 +76,18 @@ object P2pStackWedgePolicy {
         if (last != null && (now - last) in 0 until RESTART_COOLDOWN_MS) return false
         return countRecent(restartTimes, now, HOUR_MS) < MAX_RESTARTS_PER_HOUR
     }
+
+    /** How long after a WiFi restart of ours the stack can still refuse a create it would host. */
+    const val SETTLE_AFTER_RESTART_MS = 20_000L
+
+    /**
+     * Whether a create that failed outright is this unit declining to host the group, rather than
+     * the stack still coming back from a restart this app asked for.
+     *
+     * What the unit was learned to refuse is forgotten when the remembered route fails, so that a
+     * changed firmware is asked again. A failure seconds after a restart is not that: it forgot
+     * both lessons on a unit that had not changed, and the next bring-up paid for them again.
+     */
+    fun failureIsTheUnits(nowMs: Long, restartInFlight: Boolean, restartTimesMs: List<Long>): Boolean =
+        !restartInFlight && restartTimesMs.none { nowMs - it in 0 until SETTLE_AFTER_RESTART_MS }
 }
