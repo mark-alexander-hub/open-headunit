@@ -1,5 +1,6 @@
 package com.andrerinas.openheadunit.main
 
+import com.andrerinas.openheadunit.trip.ParkedDialog
 import com.andrerinas.openheadunit.trip.TripsDialog
 import android.content.Context
 import android.content.Intent
@@ -94,6 +95,7 @@ class HomeFragment : Fragment() {
     private lateinit var exitButton: Button
     private lateinit var appsButton: Button
     private lateinit var tripsButton: Button
+    private lateinit var parkedButton: Button
     private lateinit var self_mode_text: TextView
     private var hasAttemptedAutoConnect = false
     private var hasAttemptedSingleUsbAutoConnect = false
@@ -126,6 +128,7 @@ class HomeFragment : Fragment() {
         exitButton = view.findViewById(R.id.exit_button)
         appsButton = view.findViewById(R.id.apps_button)
         tripsButton = view.findViewById(R.id.trips_button)
+        parkedButton = view.findViewById(R.id.parked_button)
         self_mode_text = view.findViewById(R.id.self_mode_text)
 
         // Portrait layout: cap grid width so square buttons never overflow
@@ -383,6 +386,7 @@ class HomeFragment : Fragment() {
 
     private fun setupListeners() {
         tripsButton.setOnClickListener { activity?.let { TripsDialog.show(it) } }
+        parkedButton.setOnClickListener { activity?.let { ParkedDialog.show(it, commManager.isConnected) } }
 
         appsButton.setOnClickListener {
             val controller = findNavController()
@@ -1286,6 +1290,7 @@ class HomeFragment : Fragment() {
 
         exitButton.setTextColor(Color.WHITE)
         tripsButton.setTextColor(Color.WHITE)
+        parkedButton.setTextColor(Color.WHITE)
         appsButton.setTextColor(Color.WHITE)
     }
 

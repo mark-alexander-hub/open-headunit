@@ -1136,6 +1136,17 @@
     <string name="trips_map_up_split">Map up in %1$s (phone %2$s + video %3$s)</string>
     <string name="trips_low_battery">Head unit battery %1$d %% - plug it in before a long drive</string>
     <string name="trips">Trips</string>
+    <string name="parked_button">Parked</string>
+    <string name="parked_title">Parked - something to watch</string>
+    <string name="parked_back">Back</string>
+    <string name="parked_none">No video apps on this unit. Install YouTube, VLC or Jellyfin and they show up here.</string>
+    <string name="parked_busy">Not while Android Auto is on the screen.</string>
+    <string name="parked_failed">That app would not open.</string>
+    <string name="parked_status">Battery %1$d %%  ·  Internet: %2$s</string>
+    <string name="parked_status_net">Internet: %1$s</string>
+    <string name="parked_net_wifi">WiFi</string>
+    <string name="parked_net_mobile">mobile data</string>
+    <string name="parked_net_none">none - only downloaded videos will play</string>
     <string name="trips_title">Trips</string>
     <string name="trips_empty">No trips yet. Turn on Trip report in Settings, then drive.</string>
     <string name="trips_parked">Parked</string>

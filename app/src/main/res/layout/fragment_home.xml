@@ -187,6 +187,20 @@
         android:visibility="gone" />
 
     <com.google.android.material.button.MaterialButton
+        android:id="@+id/parked_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toEndOf="@id/trips_button"
+        android:layout_marginStart="8dp"
+        android:layout_marginBottom="16dp"
+        app:layout_goneMarginStart="16dp"
+        android:text="@string/parked_button"
+        app:backgroundTint="@color/material_grey_700"
+        android:textColor="@android:color/white"
+        app:cornerRadius="8dp" />
+
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/apps_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
