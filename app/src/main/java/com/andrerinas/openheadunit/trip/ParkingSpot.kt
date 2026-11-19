@@ -114,7 +114,8 @@ object ParkingSpot {
         val app = context.applicationContext
         handler.post {
             releaseTracker(app)
-            val tracked = lastTracked?.takeIf { System.currentTimeMillis() - it.time <= LAST_KNOWN_MAX_AGE_MS }
+            val lastTrip = lastTracked
+            val tracked = lastTrip?.takeIf { System.currentTimeMillis() - it.time <= LAST_KNOWN_MAX_AGE_MS }
             lastTracked = null
             if (!hasPermission(app)) {
                 AppLog.w("ParkingSpot: no location permission, not saving where the trip ended")
@@ -122,12 +123,16 @@ object ParkingSpot {
             }
             val lm = app.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return@post
             // The newest trip fix, not the most accurate: an older sharper one is further back up the road.
-            val seed = tracked ?: freshLastKnown(lm)
+            // An old trip fix still beats none: the GPS goes quiet once the car is parked under a
+            // roof, and with airplane mode on there is no network fix either. Being from this very
+            // trip, its last fix is where the car stopped, however long the session ran on after.
+            val seed = tracked ?: freshLastKnown(lm) ?: lastTrip
             // Written at once: the app is often closed seconds after a trip, long before the
             // listen below ends, and a spot held only in memory is lost with the process.
             seed?.let {
                 save(app, it)
-                AppLog.i("ParkingSpot: saved the trip's last fix, accuracy ${it.accuracy.toInt()} m")
+                val ageS = (System.currentTimeMillis() - it.time) / 1000
+                AppLog.i("ParkingSpot: saved the trip's last fix, accuracy ${it.accuracy.toInt()} m, ${ageS}s old")
             }
             if (listener != null) {
                 // A listen from a session that ended moments ago is still running. It carries on,
@@ -209,8 +214,14 @@ object ParkingSpot {
             .putString(KEY_LAT, fix.latitude.toString())
             .putString(KEY_LON, fix.longitude.toString())
             .putFloat(KEY_ACC, fix.accuracy)
-            .putLong(KEY_TIME, System.currentTimeMillis())
+            .putLong(KEY_TIME, fixTime(fix))
             .apply()
+    }
+
+    /** When the fix was taken (the parked time shown), unless its clock is plainly wrong. */
+    private fun fixTime(fix: Location): Long {
+        val now = System.currentTimeMillis()
+        return fix.time.takeIf { it > 0 && it <= now + 60_000L && now - it <= 24 * 3_600_000L } ?: now
     }
 
     private fun hasPermission(context: Context) =
